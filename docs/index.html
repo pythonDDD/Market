@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>潮目 — 市場の連動と、その崩れ</title>
+<meta name="description" content="世界の株式・為替・商品・金利・暗号資産を横断して、いつもと違う動きを自動で見つけます。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="banner" class="banner"></div>
+
+<div class="wrap">
+
+<header>
+  <h1 class="brand">潮目</h1>
+  <p class="tagline">46の市場を15分ごとにスキャンして、いつもと違うものだけを上に出します。</p>
+  <div class="stamp" id="stamp"></div>
+</header>
+
+<div id="loading" class="loading">データを読み込んでいます…</div>
+
+<div id="app" style="display:none">
+
+<nav class="jump">
+  <a href="#scan">今日の異常</a><a href="#risk">リスク選好</a><a href="#decomp">BTCの分解</a>
+  <a href="#corr">連動の推移</a><a href="#breaks">相関の壊れ度</a><a href="#lag">リード・ラグ</a>
+  <a href="#cal">曜日と月</a><a href="#dist">分布の中の位置</a><a href="#analog">似た局面のその後</a>
+  <a href="#matrix">相関マトリクス</a><a href="#fx">円建てとドル建て</a>
+  <a href="#crypto">暗号資産の温度</a><a href="#list">市場一覧</a>
+</nav>
+
+<section id="scan">
+  <div class="card">
+    <p class="scan-lead" id="scanLead"></p>
+    <p class="scan-sub" id="scanSub"></p>
+    <div id="scanRows"></div>
+    <p class="note">zスコアは「（直近の値 − 過去1年の平均）÷ 過去1年の標準偏差」。
+      単位の違う指標を同じ物差しに載せるための計算です。相関の行は、その相関自体が
+      普段の水準からどれだけ離れているかを見ています。</p>
+  </div>
+</section>
+
+<section id="risk">
+  <div class="sec"><h2>リスク選好</h2>
+    <p>株式・恐怖指数・銅と金の比・長期金利・ドルの5つの5日変化をzスコアにして平均したもの。
+      右がリスクオン、左がリスクオフです。</p></div>
+  <div class="grid2">
+    <div class="card" style="text-align:center">
+      <svg id="gauge" viewBox="0 0 320 180" role="img" aria-label="リスク選好メーター"></svg>
+      <p class="gauge-val" id="riskVal">—</p>
+      <p class="gauge-cap" id="riskCap"></p>
+      <div id="riskComp" style="margin-top:18px;text-align:left"></div>
+    </div>
+    <div class="card">
+      <svg id="riskHist" viewBox="0 0 460 210" role="img" aria-label="リスク選好の推移"></svg>
+      <p class="note">過去180営業日の推移。この指数は複数の市場を合成したもので、
+        どこかで公表されている公式の指標ではありません。内訳は左に出しています。</p>
+    </div>
+  </div>
+</section>
+
+<section id="decomp">
+  <div class="sec"><h2>ビットコインの値動きの分解</h2>
+    <p>過去1年のデータで BTC = α + β×S&amp;P500 を推定し、直近の動きを
+      「株式で説明できる分」と「ビットコイン固有の分」に分けています。</p></div>
+  <div class="grid2">
+    <div class="card" id="decompBox"></div>
+    <div class="card">
+      <svg id="betaChart" viewBox="0 0 460 210" role="img" aria-label="βの推移"></svg>
+      <p class="note" id="betaNote"></p>
+    </div>
+  </div>
+</section>
+
+<section id="corr">
+  <div class="sec"><h2>連動の推移</h2><p>30日ローリング相関。日次リターンで計算しています。</p></div>
+  <div class="card">
+    <div class="dlg" id="corrLegend" style="margin-bottom:14px"></div>
+    <svg id="corrChart" viewBox="0 0 900 300" role="img" aria-label="ローリング相関の推移"></svg>
+    <p class="note" id="corrNote"></p>
+  </div>
+</section>
+
+<section id="breaks">
+  <div class="sec"><h2>相関の壊れ度</h2>
+    <p>全ペアについて「直近30日の相関」と「過去1年の相関」の差を取り、大きい順に並べています。
+      普段の関係から外れているペアが上に来ます。</p></div>
+  <div class="card"><div id="breaksRows"></div></div>
+</section>
+
+<section id="lag">
+  <div class="sec"><h2>リード・ラグ</h2>
+    <p>片方をずらしながら相関を測り、何日ずれて効いているかを見ます。
+      棒が右に寄るほどビットコインが後追い、左なら先行しています。</p></div>
+  <div class="grid2" id="lagBox"></div>
+</section>
+
+<section id="cal">
+  <div class="sec"><h2>曜日と月のくせ</h2>
+    <p>日次リターンを曜日別・月別に集計したもの。各セルに平均・勝率・標本数を出しています。</p></div>
+  <div class="card"><table class="hm" id="dowTable"></table>
+    <p class="note"><b>点線で囲まれたセルは、統計的に弱いものです。</b>
+      平均が0から離れている度合い（t値）が2未満のもの、つまり偶然の範囲に収まるものに
+      印を付けています。曜日や月の効果は年によって反転することが多く、
+      これだけを根拠にした売買は勧められません。</p></div>
+  <div class="card" style="margin-top:20px"><table class="hm" id="monthTable"></table></div>
+</section>
+
+<section id="dist">
+  <div class="sec"><h2>分布の中の位置</h2>
+    <p>過去2年の日次リターン分布に、直近の値を刺しています。</p></div>
+  <div class="grid2" id="distBox"></div>
+</section>
+
+<section id="analog">
+  <div class="sec"><h2>似た局面のその後</h2>
+    <p>予測ではありません。いまと似た条件だった日を過去から探し、
+      <b>その日を起点0%としたビットコインの累積リターン</b>が20営業日後までにどう散らばったかを、
+      過去の全事例から集計したものです。散らばっているのは相関ではなく価格です。</p></div>
+  <div class="card">
+    <div id="analogText"></div>
+    <svg id="fan" viewBox="0 0 900 300" role="img" aria-label="似た局面のその後の分布"></svg>
+    <div class="dlg" style="margin-top:14px">
+      <span><i style="background:#527695"></i>中央値</span>
+      <span><i style="background:#84D2F5"></i>25〜75パーセンタイル</span>
+      <span><i style="background:#DFF6F1"></i>10〜90パーセンタイル</span>
+    </div>
+    <p class="warnbox" id="analogNote"></p>
+  </div>
+</section>
+
+<section id="matrix">
+  <div class="sec"><h2>相関マトリクス</h2>
+    <p>直近30日・日次リターン。濃い紺ほど逆方向、明るい水色ほど同方向に動いています。</p></div>
+  <div class="card mx"><table id="mtx"></table></div>
+</section>
+
+<section id="fx">
+  <div class="sec"><h2>円建てとドル建て</h2>
+    <p>同じ資産でも、どの通貨で見るかで成績が変わります。日本から見た実質の数字です。</p></div>
+  <div class="card" id="fxBox"></div>
+</section>
+
+<section id="crypto">
+  <div class="sec"><h2>暗号資産の温度</h2>
+    <p>資金調達レートと建玉は Hyperliquid の実測値です。</p></div>
+  <div class="grid4" id="cryptoTiles"></div>
+</section>
+
+<section id="list">
+  <div class="sec"><h2>市場一覧</h2>
+    <p>変化率は確定した日足どうしの比較。右端の線は<b>直近30営業日の終値</b>です。
+      <b>行をクリックすると、日足のローソク足と詳細が開きます。</b></p></div>
+  <div class="grid2" id="tables"></div>
+</section>
+
+<footer>
+  <p>公開データをまとめて表示しているだけのサイトです。投資助言ではありません。
+     売買の判断に使う場合は、必ず一次情報を確認してください。</p>
+  <p>取得に失敗した項目は前回値のまま残り、画面上部に警告が出ます。
+     警告が出ていない状態でも、確定した日足は前営業日のものである点にご注意ください。</p>
+  <div id="logBox"></div>
+</footer>
+
+
+</div>
+</div>
+
+<div id="modal" class="modal" hidden>
+  <div class="modal-inner" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-head">
+      <div>
+        <h3 id="modalTitle"></h3>
+        <p id="modalSub"></p>
+      </div>
+      <button id="modalClose" aria-label="閉じる">✕</button>
+    </div>
+    <div id="modalBody"></div>
+    <p id="modalLink" class="modal-link"></p>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

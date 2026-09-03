@@ -1,0 +1,232 @@
+/* 暗い背景を基準にした配色。
+   いただいた配色カードの水色・青緑は暗地の方がよく発色する。
+   紙色だった #DFF6F1 / #B0F1F0 / #84D2F5 は、暗地では文字とグラフ側に回している。 */
+:root{
+  --bg:#0E161C;          /* 背景 */
+  --surface:#18242D;     /* カード */
+  --surface2:#1E2E39;    /* カードの中の一段濃い面 */
+  --mist:#16272E;        /* 見出し帯 */
+  --hair:#293B48;        /* 罫線 */
+  --grid:#22323D;        /* グラフの薄い目盛 */
+  --axis:#3B5262;        /* グラフのゼロ線 */
+
+  --ink:#E4EFF2;         /* 本文 */
+  --muted:#8CA3B2;       /* 補足 */
+  --deep:#B0F1F0;        /* 見出し（青緑） */
+  --sky:#84D2F5;
+  --aqua:#B0F1F0;
+  --cyan:#00B4D8;
+  --alert:#FFEB3B;
+  --up:#FF7A6E;          /* 上昇。暗地で沈まないよう明るめの珊瑚色 */
+  --down:#5AB4E8;        /* 下落 */
+
+  --sans:"Zen Kaku Gothic New",system-ui,sans-serif;
+  --serif:"Shippori Mincho",serif;
+}
+*{box-sizing:border-box}
+html{color-scheme:dark}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+  font-size:15px;line-height:1.7;font-variant-numeric:tabular-nums;
+  background-image:radial-gradient(rgba(176,241,240,.05) 1px,transparent 1px);
+  background-size:3px 3px;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1200px;margin:0 auto;padding:0 24px}
+svg{display:block;width:100%;height:auto}
+a{color:var(--sky)}
+
+.banner{padding:11px 24px;text-align:center;font-size:13.5px;font-weight:700;display:none}
+.banner.stale{display:block;background:var(--alert);color:#231f00}
+.banner.error{display:block;background:#B3453C;color:#fff}
+
+header{padding:42px 0 24px}
+.brand{font-family:var(--serif);font-size:clamp(28px,4.6vw,44px);font-weight:600;
+  letter-spacing:.32em;margin:0;color:var(--deep);text-indent:.32em;
+  text-shadow:0 0 34px rgba(176,241,240,.18)}
+.tagline{margin:10px 0 0;color:var(--muted);font-size:14px;max-width:58ch}
+.stamp{margin-top:18px;display:flex;flex-wrap:wrap;gap:6px 22px;font-size:13px;
+  color:var(--muted);border-top:1px solid var(--hair);padding-top:13px}
+.stamp b{color:var(--ink);font-weight:500}
+.dot{width:7px;height:7px;border-radius:50%;background:#4FD08A;display:inline-block;
+  margin-right:6px;box-shadow:0 0 8px rgba(79,208,138,.7)}
+.dot.warn{background:#E8B93F;box-shadow:0 0 8px rgba(232,185,63,.7)}
+
+nav.jump{display:flex;flex-wrap:wrap;gap:6px;padding:0 0 30px}
+nav.jump a{font-size:12.5px;color:var(--sky);text-decoration:none;background:var(--surface);
+  border:1px solid var(--hair);border-radius:999px;padding:5px 13px}
+nav.jump a:hover,nav.jump a:focus-visible{background:var(--surface2);border-color:var(--sky)}
+
+section{margin-bottom:54px;scroll-margin-top:16px}
+.sec{margin:0 0 16px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.sec h2{font-family:var(--serif);font-weight:600;font-size:20px;letter-spacing:.14em;
+  margin:0;color:var(--deep)}
+.sec p{margin:0;font-size:13px;color:var(--muted);max-width:66ch}
+.card{background:var(--surface);border:1px solid var(--hair);border-radius:18px;
+  padding:26px 28px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(370px,1fr));gap:20px}
+.grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px}
+.note{font-size:12.5px;color:var(--muted);margin:12px 0 0}
+.note b{color:var(--ink)}
+.warnbox{margin:14px 0 0;padding:12px 15px;border-radius:11px;font-size:12.5px;
+  background:rgba(255,235,59,.10);border:1px solid rgba(255,235,59,.35);color:#F2E9A8}
+.warnbox b{color:var(--alert)}
+
+.scan-lead{font-family:var(--serif);font-size:clamp(18px,2.5vw,25px);line-height:1.55;
+  margin:0 0 6px;color:var(--deep);letter-spacing:.03em}
+.scan-sub{margin:0 0 22px;color:var(--muted);font-size:13.5px}
+.subhead{font-size:12.5px;color:var(--muted);letter-spacing:.1em;margin:26px 0 8px;
+  padding-bottom:6px;border-bottom:1px solid var(--hair)}
+.subhead:first-child{margin-top:0}
+.row{display:grid;grid-template-columns:180px 1fr 150px 58px;align-items:center;gap:12px;
+  padding:7px 0;border-bottom:1px solid var(--hair);font-size:13.5px}
+.row:last-child{border-bottom:none}
+.row .lbl small{display:block;color:var(--muted);font-size:11.5px;line-height:1.35}
+.row .val{text-align:right;color:var(--muted);font-size:12.5px}
+.row .z{text-align:right;font-weight:700;font-size:14px}
+.zbar{position:relative;height:20px;border-radius:5px;background:linear-gradient(90deg,
+  rgba(90,180,232,.18),rgba(90,180,232,.05) 45%,rgba(255,122,110,.05) 55%,rgba(255,122,110,.18))}
+.zbar::before{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;
+  background:var(--axis)}
+.zbar span{position:absolute;top:4px;height:12px;border-radius:3px}
+
+.gauge-val{font-family:var(--serif);font-size:42px;font-weight:600;color:var(--deep);
+  margin:0;line-height:1}
+.gauge-cap{font-size:13px;color:var(--muted);margin:4px 0 0}
+.comp{display:flex;justify-content:space-between;font-size:12.5px;padding:6px 0;
+  border-bottom:1px solid var(--hair)}
+.comp:last-child{border-bottom:none}
+
+.decomp{display:flex;height:34px;border-radius:8px;overflow:hidden;margin:14px 0 6px}
+.decomp div{display:flex;align-items:center;justify-content:center;font-size:12.5px;
+  font-weight:700;color:#0E161C}
+.dlg{display:flex;gap:18px;font-size:12.5px;color:var(--muted);flex-wrap:wrap}
+.dlg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;
+  vertical-align:-1px}
+
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+.hm td,.hm th{padding:3px;text-align:center;border:none}
+.hm th{font-size:12px;color:var(--muted);font-weight:500}
+.hm th.row{text-align:right;padding-right:12px;color:var(--ink);white-space:nowrap;
+  display:table-cell}
+.cell{border-radius:8px;padding:9px 4px;font-size:12.5px;line-height:1.3;color:var(--ink)}
+.cell b{display:block;font-size:13.5px}
+.cell em{font-style:normal;font-size:10.5px;opacity:.7}
+.cell.weak{outline:1px dashed rgba(228,239,242,.3);outline-offset:-3px}
+
+.mx{overflow-x:auto}
+.mx table{min-width:560px;font-size:13px}
+.mx th{font-weight:500;color:var(--muted);font-size:11.5px;padding:6px 3px;text-align:center}
+.mx th.row{text-align:right;padding-right:10px;color:var(--ink);white-space:nowrap}
+.mx td{padding:2px;text-align:center}
+
+.panel{background:var(--surface);border:1px solid var(--hair);border-radius:16px;overflow:hidden}
+.panel h3{margin:0;padding:14px 20px 12px;font-family:var(--serif);font-size:15px;
+  font-weight:600;letter-spacing:.14em;color:var(--deep);border-bottom:1px solid var(--hair);
+  background:var(--mist)}
+.panel td{padding:9px 20px;border-bottom:1px solid var(--hair);font-size:14px}
+.panel tr:last-child td{border-bottom:none}
+.nm small{display:block;color:var(--muted);font-size:11.5px;line-height:1.35}
+.px{text-align:right;font-weight:500;white-space:nowrap}
+.ch{text-align:right;white-space:nowrap;width:80px;font-weight:700}
+.up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--muted)}
+
+.tile{background:var(--surface);border:1px solid var(--hair);border-radius:16px;padding:18px 20px}
+.tile .k{font-size:12.5px;color:var(--muted);margin:0 0 6px}
+.tile .v{font-family:var(--serif);font-size:30px;font-weight:600;line-height:1.1;
+  margin:0;color:var(--deep)}
+.tile .u{font-size:13px;color:var(--muted);margin-left:5px;font-family:var(--sans);font-weight:400}
+.tile .n{font-size:12px;color:var(--muted);margin:7px 0 0}
+
+footer{border-top:1px solid var(--hair);padding:26px 0 60px;font-size:12.5px;color:var(--muted)}
+footer p{margin:0 0 6px;max-width:80ch}
+details summary{cursor:pointer;font-size:12.5px;color:var(--sky)}
+details pre{font-size:11px;line-height:1.55;overflow-x:auto;background:var(--surface);
+  border:1px solid var(--hair);padding:12px;border-radius:10px;color:var(--ink);
+  white-space:pre-wrap}
+
+.loading{padding:80px 0;text-align:center;color:var(--muted)}
+
+@media (max-width:640px){
+  .wrap{padding:0 15px}
+  .card{padding:20px 16px}
+  .row{grid-template-columns:118px 1fr 52px;gap:8px}
+  .row .val{display:none}
+  .gauge-val{font-size:34px}
+  .panel td{padding:8px 14px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ---- グラフの吹き出し ---- */
+.tip{position:absolute;top:6px;display:none;pointer-events:none;z-index:5;
+  background:rgba(9,17,22,.94);border:1px solid var(--hair);border-radius:10px;
+  padding:8px 11px;font-size:12px;line-height:1.65;color:var(--ink);
+  box-shadow:0 6px 20px rgba(0,0,0,.5);white-space:nowrap}
+.tip .d{color:var(--muted);font-size:11px;margin-bottom:3px}
+.tip i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;
+  vertical-align:0}
+.tip b{margin-left:8px;float:right}
+svg{touch-action:pan-y}
+
+/* ---- クリックできる行 ---- */
+tr.mrow{cursor:pointer}
+tr.mrow:hover td,tr.mrow:focus-visible td{background:var(--surface2)}
+tr.mrow:focus-visible{outline:2px solid var(--sky);outline-offset:-2px}
+
+/* ---- 詳細ダイアログ ---- */
+dialog#detail{width:min(960px,94vw);max-height:92vh;border:1px solid var(--hair);
+  border-radius:18px;background:var(--surface);color:var(--ink);padding:26px 28px 22px;
+  font-family:var(--sans)}
+dialog#detail::backdrop{background:rgba(5,10,14,.78)}
+dialog#detail h3{font-family:var(--serif);font-size:22px;font-weight:600;letter-spacing:.1em;
+  margin:0 0 6px;color:var(--deep)}
+dialog#detail .dsub{margin:0 0 18px;font-size:12.5px;color:var(--muted)}
+dialog#detail .x{position:absolute;top:14px;right:16px;background:none;border:none;
+  color:var(--muted);font-size:26px;line-height:1;cursor:pointer;padding:4px 8px}
+dialog#detail .x:hover{color:var(--ink)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px;
+  margin-bottom:16px}
+.stat{background:var(--surface2);border-radius:10px;padding:9px 11px}
+.stat span{display:block;font-size:11px;color:var(--muted)}
+.stat b{font-size:15px;font-weight:700}
+.ranges{display:flex;gap:6px;margin-bottom:12px}
+.ranges button{background:var(--surface2);border:1px solid var(--hair);color:var(--muted);
+  border-radius:999px;padding:4px 14px;font-size:12.5px;cursor:pointer;font-family:var(--sans)}
+.ranges button.on{background:var(--sky);border-color:var(--sky);color:#0E161C;font-weight:700}
+
+/* ---- グラフの吹き出し ---- */
+.tip{position:absolute;display:none;z-index:20;pointer-events:none;
+  background:#0B1319;border:1px solid var(--hair);border-radius:10px;
+  padding:9px 11px;font-size:12px;line-height:1.6;color:var(--ink);
+  box-shadow:0 8px 24px rgba(0,0,0,.55);white-space:nowrap;top:8px}
+.tip .d{color:var(--muted);font-size:11px;margin-bottom:4px}
+.tip div{display:flex;align-items:center;gap:7px}
+.tip div b{margin-left:auto;font-variant-numeric:tabular-nums}
+.tip i{display:inline-block;width:9px;height:9px;border-radius:2px;flex:none}
+
+/* ---- クリックできる行 ---- */
+tr.clickable{cursor:pointer}
+tr.clickable:hover td,tr.clickable:focus-visible td{background:var(--surface2)}
+tr.clickable:focus-visible{outline:2px solid var(--sky);outline-offset:-2px}
+
+/* ---- 拡大表示 ---- */
+.modal{position:fixed;inset:0;z-index:50;background:rgba(6,11,15,.82);
+  display:flex;align-items:center;justify-content:center;padding:24px;
+  backdrop-filter:blur(3px)}
+.modal[hidden]{display:none}
+.modal-inner{background:var(--surface);border:1px solid var(--hair);border-radius:18px;
+  width:min(1000px,100%);max-height:90vh;overflow:auto;padding:22px 24px 18px}
+.modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;
+  margin-bottom:14px}
+.modal-head h3{margin:0;font-family:var(--serif);font-size:21px;font-weight:600;
+  letter-spacing:.1em;color:var(--deep)}
+.modal-head p{margin:5px 0 0;font-size:12.5px;color:var(--muted)}
+.modal-head p b{color:var(--ink)}
+#modalClose{background:none;border:1px solid var(--hair);color:var(--muted);
+  border-radius:9px;width:34px;height:34px;font-size:15px;cursor:pointer;flex:none}
+#modalClose:hover{background:var(--surface2);color:var(--ink)}
+.chartbox{position:relative}
+.ranges{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.ranges button{background:var(--surface2);border:1px solid var(--hair);color:var(--muted);
+  border-radius:999px;padding:4px 13px;font-size:12.5px;cursor:pointer;font-family:var(--sans)}
+.ranges button.on{background:var(--sky);border-color:var(--sky);color:#0E161C;font-weight:700}
+.modal-link{margin:14px 0 0;font-size:12.5px}
+.modal-link a{color:var(--sky)}
+@media (max-width:640px){.modal{padding:10px}.modal-inner{padding:16px 14px 12px}}

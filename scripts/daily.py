@@ -80,8 +80,12 @@ CARRY = ["notify_state.json", "daily.png", "daily_prev.png", "daily_msg.json"]
 MONTHLY_CAP_DAILY = 190
 
 # 何時から描き始め、何時から送るか（日本時間・分で持つ）
-RENDER_AFTER = 8 * 60 + 40      # 8:40
-SEND_AFTER = 9 * 60             # 9:00
+RENDER_AFTER = 8 * 60 + 40      # 8:40 これ以降に描き始める
+SEND_AFTER = 9 * 60             # 9:00 これ以降に送る
+# これを過ぎたら、その日はもう送らない。
+# 上限が無いと「9時前に一度も動かなかった日」の救済が効きすぎて、
+# 夕方に「朝の便り」が飛ぶ。実際に飛んだので閉じた。
+DAY_DEADLINE = 11 * 60          # 11:00
 MAX_IMAGE_ATTEMPTS = 4          # 画像の公開を待つ回数。超えたら文字だけで送る
 
 PAL = {k: C.rgb(v) for k, v in {
@@ -347,7 +351,7 @@ def build_text(d: dict, now: datetime, image_ok: bool = True) -> str:
     rows = [r for r in (d.get("summary") or []) if r.get("z1d") is not None]
     rows.sort(key=lambda r: -abs(r["z1d"]))
     if rows:
-        L += ["", "きのう動いたもの"]
+        L += ["", "大きく動いたもの（日次変化）"]
         for r in rows[:5]:
             L.append(f"・{r['name']} {jp_pct(r.get('chg1d'), r.get('unit'))}"
                      f"（{r['z1d']:+.1f}σ）")
@@ -365,14 +369,19 @@ def build_text(d: dict, now: datetime, image_ok: bool = True) -> str:
 
 def _row(label: str, value: str, color: str = "#E4EFF2", bold: bool = False) -> dict:
     return {"type": "box", "layout": "baseline", "contents": [
-        {"type": "text", "text": label, "size": "sm", "color": "#8CA3B2", "flex": 4},
+        {"type": "text", "text": label, "size": "sm", "color": "#8CA3B2", "flex": 6},
         {"type": "text", "text": value, "size": "md" if bold else "sm",
          "color": color, "flex": 5, "align": "end",
          "weight": "bold" if bold else "regular"}]}
 
 
-def build_flex(d: dict, now: datetime, image_url: str | None) -> dict:
-    """Flexメッセージ本体。作りは控えめにしてある（凝るほど400で弾かれやすいため）。"""
+def build_flex(d: dict, now: datetime, image_ok: bool = True) -> dict:
+    """Flexメッセージ本体。作りは控えめにしてある（凝るほど400で弾かれやすいため）。
+
+    図はここには入れない。別の吹き出しで送る。
+    以前は hero にも入れていたが、同じ図が2回並んで読みにくかった。
+    別送なら、指で開いて拡大できる利点もある。
+    """
     risk = d.get("risk") or {}
     rv = risk.get("value")
     mood = "—"
@@ -409,7 +418,7 @@ def build_flex(d: dict, now: datetime, image_url: str | None) -> dict:
     dec = d.get("decomp") or {}
     extras = []
     if corr:
-        extras.append(_row("S&P500との30日相関", f"{corr[-1]:+.2f}"))
+        extras.append(_row("S&P500との相関", f"{corr[-1]:+.2f}"))
     if dec.get("beta") is not None:
         extras.append(_row("株式への感応度 β", f"{dec['beta']:+.2f}"))
     fg = ((d.get("extra") or {}).get("fear_greed") or {})
@@ -423,7 +432,7 @@ def build_flex(d: dict, now: datetime, image_url: str | None) -> dict:
     rows.sort(key=lambda r: -abs(r["z1d"]))
     if rows:
         body.append({"type": "separator", "margin": "lg", "color": "#293B48"})
-        body.append({"type": "text", "text": "きのう動いたもの", "size": "sm",
+        body.append({"type": "text", "text": "大きく動いたもの（日次変化）", "size": "sm",
                      "color": "#8CA3B2", "margin": "lg"})
         mv = []
         for r in rows[:5]:
@@ -467,11 +476,10 @@ def build_flex(d: dict, now: datetime, image_url: str | None) -> dict:
                    "body": {"backgroundColor": "#18242D"},
                    "footer": {"backgroundColor": "#18242D"}},
     }
-    if image_url:
-        bubble["hero"] = {"type": "image", "url": image_url, "size": "full",
-                          "aspectRatio": f"{W}:{H}", "aspectMode": "fit",
-                          "backgroundColor": "#0E161C",
-                          "action": {"type": "uri", "uri": image_url}}
+    if not image_ok:
+        body.append({"type": "text", "margin": "sm", "size": "xs", "wrap": True,
+                     "color": "#FFEB3B",
+                     "text": "図は公開が間に合わなかったため省きました"})
     alt = (f"【潮目】{now.month}月{now.day}日の朝の便り"
            + (f"／リスク選好 {rv:+.0f}" if rv is not None else ""))
     return {"type": "flex", "altText": alt[:400], "contents": bubble}
@@ -571,8 +579,8 @@ def cmd_render(stamp: str | None = None) -> int:
     msg = {"stamp": stamp, "date_jst": now.strftime("%Y-%m-%d"),
            "image_url": url, "preview_url": prev,
            "image_bytes": n1, "preview_bytes": n2,
-           "flex": build_flex(d, now, url),
-           "flex_no_image": build_flex(d, now, None),
+           "flex": build_flex(d, now, True),
+           "flex_no_image": build_flex(d, now, False),
            "text": build_text(d, now, True),
            "text_no_image": build_text(d, now, False)}
     write_json(MSG, msg)
@@ -595,6 +603,10 @@ def decide(state: dict, now: datetime) -> tuple[str, str]:
     minutes = now.hour * 60 + now.minute
     if dd.get("sent_date") == today:
         return "idle", f"{today} はすでに送信済みです"
+    if minutes >= DAY_DEADLINE:
+        # 朝の便りは朝でなければ意味がない。遅れた日は翌朝に送る。
+        return "idle", (f"今日の配信時間帯（{RENDER_AFTER//60}:{RENDER_AFTER%60:02d}"
+                        f"〜{DAY_DEADLINE//60}:{DAY_DEADLINE%60:02d}）を過ぎました")
     if dd.get("render_date") != today:
         if minutes >= RENDER_AFTER:
             return "render", "今日ぶんの画像がまだありません"
@@ -837,6 +849,7 @@ def selftest() -> int:
     # ---- 文字の版 ----
     t = build_text(d, now)
     ck("見出しに日付が入る", "9月3日" in t and "（木）" in t, t[:40])
+    ck("見出しを「きのう」と書かない", "きのう" not in t, t)
     ck("リスク選好が入る", "-63" in t and "リスクオフ" in t, t[:120])
     ck("ビットコインの値が入る", "64,210" in t, t[:200])
     ck("利回りはptで書く", "+0.09pt" in t, [l for l in t.split("\n") if "米10年" in l])
@@ -847,14 +860,15 @@ def selftest() -> int:
     ck("4900字に収まる", len(t) < 4900, len(t))
 
     # ---- Flex ----
-    f = build_flex(d, now, "https://example.com/a.png?v=1")
+    f = build_flex(d, now, True)
     ck("Flexの型", f["type"] == "flex" and f["contents"]["type"] == "bubble")
     ck("代替テキストがある", 0 < len(f["altText"]) <= 400, f["altText"])
-    ck("画像URLがheroに入る", f["contents"]["hero"]["url"].endswith("v=1"))
+    ck("図をheroに入れない（二重表示の防止）", "hero" not in f["contents"])
+    ck("図が無いときは断りを入れる",
+       "間に合わなかった" in json.dumps(build_flex(d, now, False), ensure_ascii=False))
     hdr = f["contents"]["header"]["contents"][1]["text"]
     ck("見出しの日付（Windowsでも落ちない書き方）",
        hdr == "2026年9月3日（木）09:00 JST", hdr)
-    ck("画像なしならheroが無い", "hero" not in build_flex(d, now, None)["contents"])
     js = json.dumps(f, ensure_ascii=False)
     ck("Flex全体が30KB未満", len(js.encode()) < 30000, len(js.encode()))
     ck("空のboxを作っていない", '"contents": []' not in js and '"contents":[]' not in js)
@@ -916,14 +930,22 @@ def selftest() -> int:
     rendered = {"daily": {"render_date": "2026-09-03", "attempts": 0}}
     ck("描いた直後はまだ送らない", at(8, 50, rendered)[0] == "idle", at(8, 50, rendered))
     ck("9時から送る", at(9, 0, rendered)[0] == "send", at(9, 0, rendered))
-    ck("9時を過ぎていても送る", at(11, 30, rendered)[0] == "send")
+    ck("少し遅れても送る", at(10, 30, rendered)[0] == "send")
     sent = {"daily": {"render_date": "2026-09-03", "sent_date": "2026-09-03"}}
     ck("同じ日に二度送らない", at(9, 30, sent)[0] == "idle", at(9, 30, sent))
     ck("翌日はまた描く",
        decide(sent, datetime(2026, 9, 4, 8, 45, tzinfo=JST))[0] == "render")
     old_r = {"daily": {"render_date": "2026-09-02"}}
     ck("前日の画像は使い回さない", at(9, 30, old_r)[0] == "render", at(9, 30, old_r))
-    ck("9時前に起動しなかった日も描ける", at(12, 0)[0] == "render", at(12, 0))
+    ck("9時前に起動しなかった日も、時間内なら描ける",
+       at(10, 0)[0] == "render", at(10, 0))
+    ck("夕方には描かない", at(18, 6)[0] == "idle", at(18, 6))
+    ck("夕方には送らない", at(18, 6, rendered)[0] == "idle", at(18, 6, rendered))
+    ck("11時ちょうどで打ち切る", at(11, 0, rendered)[0] == "idle", at(11, 0, rendered))
+    ck("10時59分ならまだ送る", at(10, 59, rendered)[0] == "send")
+    ck("遅れた日も翌朝には描く",
+       decide({"daily": {"render_date": "2026-09-03"}},
+              datetime(2026, 9, 4, 8, 45, tzinfo=JST))[0] == "render")
     ck("待つ回数に上限がある", MAX_IMAGE_ATTEMPTS >= 2)
     ck("描く時刻が送る時刻より前", RENDER_AFTER < SEND_AFTER)
 

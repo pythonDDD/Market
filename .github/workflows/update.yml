@@ -1,1 +1,66 @@
+name: サイト更新
+
+# 15分ごとに実行し、GitHub Pages へ直接配信する。
+# データをリポジトリにコミットしないので、履歴が膨らまない。
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同時に走らないようにする。走行中のものは待たせる（打ち切らない）。
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 計算が壊れていたら、そもそも配信しない
+      - name: セルフテスト
+        run: |
+          python scripts/build.py --selftest
+          python scripts/notify.py --selftest
+
+      - name: データ取得と分析
+        run: |
+          python scripts/build.py --auto \
+            --seed-url https://pythonddd.github.io/Market/data/history.json
+
+      - name: 出力の確認
+        run: |
+          ls -la docs/data/
+          python -c "import json;d=json.load(open('docs/data/latest.json',encoding='utf-8'));print('取得', d['health']['ok'], '/', d['health']['total'], '銘柄');print('生成', d['generated_at'])"
+
+      # 通知は配信の前に置く。しきい値に触れていなければ何も送らない。
+      # Secrets が未設定なら送信せずログに出すだけで、失敗にはしない。
+      - name: 通知の判定
+        env:
+          LINE_CHANNEL_TOKEN: ${{ secrets.LINE_CHANNEL_TOKEN }}
+          LINE_TO: ${{ secrets.LINE_TO }}
+        run: python scripts/notify.py
+        continue-on-error: true
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
 

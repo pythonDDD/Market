@@ -9,9 +9,27 @@ name: サイト更新
 # 専用のワークフローを別に立てると「送った」という記録を配信物に残せず、
 # 翌日以降の重複判定が効かないため、あえて相乗りにしている。
 on:
+  # push を入れてあるのは2つの理由から。
+  #  1) 変更するたびに必ず1回動くので、壊れていればすぐ分かる
+  #  2) 既定ブランチへのコミットは、GitHub側で予約の再登録を促す。
+  #     予約が一度も動かないときの公式の対処がこれ。
+  push:
+    branches: [main]
+
   schedule:
-    - cron: "*/15 * * * *"
+    # 丸い分（00/15/30/45）は世界中の予約が集中して間引かれやすい。
+    # わざと半端な分にずらしてある。
+    - cron: "4,19,34,49 * * * *"
+    - cron: "47 23 * * *"      # 08:47 JST — 画像を描く回
+    - cron: "53 23 * * *"      # 08:53 JST — 予備
+    - cron: "6 0 * * *"        # 09:06 JST — 送る回
+    - cron: "11 0 * * *"       # 09:11 JST — 予備
   workflow_dispatch:
+    inputs:
+      line_test:
+        description: "LINEにテスト送信して設定を確かめる（本処理はしない）"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -32,12 +50,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 何がきっかけで動いたのかをログの先頭に残す。
+      # 「予約が動いていない」を確かめるには、これが一番早い。
+      - name: きっかけ
+        run: |
+          echo "event    : ${{ github.event_name }}"
+          echo "時刻(UTC) : $(date -u '+%Y-%m-%d %H:%M:%S')"
+          echo "時刻(JST) : $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M:%S')"
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      # 手動実行で「LINEテスト」に印を付けたときだけ、1通送って終わる。
+      - name: LINEのテスト送信
+        if: ${{ inputs.line_test }}
+        env:
+          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+        run: python scripts/daily.py --test
+
       # 計算が壊れていたら、そもそも配信しない
       - name: セルフテスト
+        if: ${{ ! inputs.line_test }}
         run: |
           python scripts/build.py --selftest
           python scripts/chart.py --selftest
@@ -45,6 +80,7 @@ jobs:
           python scripts/notify.py --selftest
 
       - name: データ取得と分析
+        if: ${{ ! inputs.line_test }}
         run: |
           python scripts/build.py --auto \
             --seed-url https://pythonddd.github.io/Market/data/history.json
@@ -52,10 +88,12 @@ jobs:
       # docs をまるごと配信し直すため、引き継がないと
       # 保存状態も昨日の画像も毎回消える。
       - name: 前回の配信物を引き継ぐ
+        if: ${{ ! inputs.line_test }}
         run: python scripts/daily.py --carry
         continue-on-error: true
 
       - name: 出力の確認
+        if: ${{ ! inputs.line_test }}
         run: |
           ls -la docs/data/
           python -c "import json;d=json.load(open('docs/data/latest.json',encoding='utf-8'));print('取得', d['health']['ok'], '/', d['health']['total'], '銘柄');print('生成', d['generated_at'])"
@@ -63,25 +101,30 @@ jobs:
       # 朝の便り。時刻を見て「描く／送る／何もしない」を自分で決める。
       # Secrets が未設定なら送信せずログに出すだけで、失敗にはしない。
       - name: 朝の便り
+        if: ${{ ! inputs.line_test }}
         env:
-          LINE_CHANNEL_TOKEN: ${{ secrets.LINE_CHANNEL_TOKEN }}
-          LINE_TO: ${{ secrets.LINE_TO }}
+          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
         run: python scripts/daily.py --tick
         continue-on-error: true
 
       # 異常が出たときだけ飛ぶ通知。配信の前に置く。
       - name: 通知の判定
+        if: ${{ ! inputs.line_test }}
         env:
-          LINE_CHANNEL_TOKEN: ${{ secrets.LINE_CHANNEL_TOKEN }}
-          LINE_TO: ${{ secrets.LINE_TO }}
+          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
         run: python scripts/notify.py
         continue-on-error: true
 
       - uses: actions/configure-pages@v5
+        if: ${{ ! inputs.line_test }}
 
       - uses: actions/upload-pages-artifact@v3
+        if: ${{ ! inputs.line_test }}
         with:
           path: docs
 
       - id: deployment
+        if: ${{ ! inputs.line_test }}
         uses: actions/deploy-pages@v4

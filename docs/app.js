@@ -79,8 +79,13 @@ function attachHover(svgId, meta) {
 }
 const F = (v, n = 2) => (v === null || v === undefined || Number.isNaN(v)) ? '—'
   : Number(v).toLocaleString('ja-JP', { minimumFractionDigits: n, maximumFractionDigits: n });
-const SGN = (v, n = 2, suf = '%') => (v === null || v === undefined) ? '—'
-  : (v > 0 ? '+' : v < 0 ? '−' : '') + F(Math.abs(v), n) + suf;
+const SGN = (v, n = 2, suf = '%') => {
+  if (v === null || v === undefined || Number.isNaN(v)) return '—';
+  // 四捨五入した結果が0なら符号を付けない。「−0.00pt」と出ていたため。
+  const r = Number(Math.abs(v).toFixed(n));
+  const sign = r === 0 ? '' : (v > 0 ? '+' : '−');
+  return sign + F(Math.abs(v), n) + suf;
+};
 const CLS = v => v > 0 ? 'up' : v < 0 ? 'down' : 'flat';
 const T = (x, y, t, o = {}) => `<text x="${x}" y="${y}" font-size="${o.s || 11}" fill="${o.c || C.text}"
   text-anchor="${o.a || 'middle'}" font-weight="${o.w || 400}" font-family="Zen Kaku Gothic New,sans-serif">${t}</text>`;
@@ -724,8 +729,10 @@ function renderModal() {
     g += `<rect x="${x(i) - bw * 0.34}" y="${top}" width="${Math.max(bw * 0.68, 1)}"
       height="${h}" fill="${col}" opacity=".9"/>`;
   });
-  [0, Math.floor(use.length / 2), use.length - 1].forEach(i =>
-    g += T(x(i), H - 10, use[i], { s: 10 }));
+  // 端のラベルは中央揃えだと枠の外に出るので、左端は左寄せ・右端は右寄せにする
+  g += T(p.l, H - 10, use[0], { s: 10, a: 'start' })
+     + T((p.l + W - p.r) / 2, H - 10, use[Math.floor(use.length / 2)], { s: 10 })
+     + T(W - p.r, H - 10, use[use.length - 1], { s: 10, a: 'end' });
 
   const first = o[0][3], last = o[o.length - 1][3];
   const chg = (last / first - 1) * 100;

@@ -144,13 +144,40 @@ details pre{font-size:11px;line-height:1.55;overflow-x:auto;background:var(--sur
 
 .loading{padding:80px 0;text-align:center;color:var(--muted)}
 
+/* 横に流せる箱。狭い画面で表がはみ出すのを防ぐ。 */
+.scrollx{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
 @media (max-width:640px){
   .wrap{padding:0 15px}
   .card{padding:20px 16px}
+
+  /* ★横あふれの解消★
+     grid2 は最小370pxを要求していたため、幅330px前後の画面では
+     箱が画面より広くなり、全体が横にずれて読めなくなっていた。
+     狭い画面では素直に1列にする。 */
+  .grid2,.grid4{grid-template-columns:1fr}
+
   .row{grid-template-columns:118px 1fr 52px;gap:8px}
   .row .val{display:none}
   .gauge-val{font-size:34px}
   .panel td{padding:8px 14px}
+
+  /* ★グラフの文字★
+     SVGは幅に合わせて縮む。viewBoxが460幅なので、画面幅330pxでは
+     およそ0.72倍。11pxの指定は実質8px以下になって読めない。
+     狭い画面のときだけ、SVG内の文字を大きめに上書きする。 */
+  .card svg text{font-size:15px}
+  #candle text{font-size:28px}      /* ローソク足は viewBox 900幅。より大きく */
+
+  /* 曜日・月の表は列が多い。詰め込まず、横に流す。 */
+  .scrollx>table.hm{min-width:540px}
+
+  .sec h2{font-size:17px}
+  .sec p{font-size:12.5px}
+  .decomp div{font-size:11px}
+  nav.jump a{font-size:13px}
+  .panel td{font-size:13px}
+  .nm small{font-size:11px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 

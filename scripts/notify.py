@@ -19,8 +19,15 @@ LINE について正直に:
   そちらに流せます。
 
 連投しない工夫:
-  同じ内容を15分ごとに送りつけないよう、前回送った内容の指紋を state.json に
-  残し、変化が無ければ黙ります。
+  同じ内容を15分ごとに送りつけないよう、前回送った内容の指紋を
+  docs/data/notify_state.json に残し、変化が無ければ黙ります。
+
+保存状態について（2026-09-03に直した点）:
+  以前は「送るものが無い回」に保存状態を書き出していませんでした。
+  このリポジトリは docs をまるごと配信し直すため、書き出さない回の配信で
+  公開中の notify_state.json が消え、連投防止も月間上限も実質効いていませんでした。
+  いまは、どの枝を通っても最後に必ず書き出します。
+  読み書きの実体は daily.py に置き、朝の便りと同じ1つのファイルを分け合います。
 """
 
 from __future__ import annotations
@@ -35,13 +42,16 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import daily as D          # noqa: E402  保存状態の読み書きを共有する
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 LATEST = os.path.join(ROOT, "docs", "data", "latest.json")
 # 状態は docs/data/ に置く。GitHub Actions のランナーは毎回まっさらで、
 # ここに置いて Pages で公開しないと「前回送った内容」が残らないため。
-STATE = os.path.join(ROOT, "docs", "data", "notify_state.json")
-STATE_URL_DEFAULT = "https://pythonddd.github.io/Market/data/notify_state.json"
+# 実体は daily.py と同じ1ファイル（notify_state.json）。
+STATE = D.STATE
 
 # ---- 通知の条件。ここを触れば挙動が変わる ----
 RULES = {
@@ -52,56 +62,37 @@ RULES = {
     "stale_alert": True,       # 取得失敗が出たら知らせる
     "max_lines": 12,           # 1通に詰め込む最大行数
     "cooldown_min": 90,        # 前回送信から最低これだけ空ける（分）
-    "monthly_cap": 100,        # 1か月あたりの送信上限。無料枠を使い切らないための保険
+    # 1か月あたりの送信上限。無料枠は月200通で、朝の便り（daily.py）と分け合う。
+    # 朝の便りが月31通ぶん必ず通るよう、こちらは低めに止める。
+    "monthly_cap": 120,
 }
 
 
-def load_state(url: str | None) -> dict:
-    """前回の送信状態を読む。ローカルに無ければ公開中のサイトから拾う。
-
-    Actions のランナーは毎回まっさらなので、この取り回しをしないと
-    連投防止も月間上限も一切効かない。
-    """
-    if os.path.exists(STATE):
-        try:
-            with open(STATE, encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:  # noqa: BLE001
-            pass
-    if not url:
-        return {}
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "market-notify/1.0"})
-        with urllib.request.urlopen(req, timeout=15,
-                                    context=ssl.create_default_context()) as r:
-            if r.getcode() == 200:
-                st = json.loads(r.read())
-                print(f"前回の送信状態を取得しました（最終送信 {st.get('sent_at', '不明')}）")
-                return st
-    except Exception as e:  # noqa: BLE001
-        print(f"前回の送信状態を取得できませんでした（{type(e).__name__}）。初回として扱います。")
-    return {}
+def load_state() -> dict:
+    """保存状態を読む。実体は daily.py と共有（notify_state.json 1つ）。"""
+    return D.load_state()
 
 
 def save_state(st: dict) -> None:
-    os.makedirs(os.path.dirname(STATE), exist_ok=True)
-    with open(STATE, "w", encoding="utf-8") as f:
-        json.dump(st, f, ensure_ascii=False)
+    D.save_state(st)
 
 
-def gate(state: dict, fp: str, now: datetime, rules: dict = RULES) -> tuple[bool, str]:
-    """送ってよいかを判定する。(送ってよいか, 理由) を返す。"""
-    month = now.strftime("%Y-%m")
-    if state.get("month") == month and state.get("count", 0) >= rules["monthly_cap"]:
-        return False, (f"今月すでに {state['count']} 通送っており、上限 "
+def gate(alert: dict, fp: str, now: datetime, used: int,
+         rules: dict = RULES) -> tuple[bool, str]:
+    """送ってよいかを判定する。(送ってよいか, 理由) を返す。
+
+    alert は保存状態のうち通知の区画。used は今月すでに送った通数。
+    """
+    if used >= rules["monthly_cap"]:
+        return False, (f"今月すでに {used} 通送っており、上限 "
                        f"{rules['monthly_cap']} 通に達しています")
-    last = state.get("sent_at")
+    last = (alert or {}).get("sent_at")
     if last:
         try:
             elapsed = (now - datetime.fromisoformat(last)).total_seconds() / 60
         except Exception:  # noqa: BLE001
             elapsed = 1e9
-        if state.get("fingerprint") == fp:
+        if alert.get("fingerprint") == fp:
             return False, f"前回と同じ内容です（{elapsed:.0f}分前に送信済み）"
         if elapsed < rules["cooldown_min"]:
             return False, (f"前回の送信から {elapsed:.0f} 分しか経っていません"
@@ -109,11 +100,14 @@ def gate(state: dict, fp: str, now: datetime, rules: dict = RULES) -> tuple[bool
     return True, "送信します"
 
 
-def bump(state: dict, fp: str, now: datetime, reasons: list[str]) -> dict:
-    month = now.strftime("%Y-%m")
-    count = state.get("count", 0) + 1 if state.get("month") == month else 1
-    return {"fingerprint": fp, "sent_at": now.isoformat(), "month": month,
-            "count": count, "reasons": reasons}
+def bump(st: dict, fp: str, now: datetime, reasons: list[str]) -> dict:
+    """送った記録を保存状態に書き込む。通数は朝の便りと共通で数える。"""
+    st = dict(st)
+    used = D.month_count(st, now)
+    st["month"] = now.strftime("%Y-%m")
+    st["count"] = used + 1
+    st["alert"] = {"fingerprint": fp, "sent_at": now.isoformat(), "reasons": reasons}
+    return st
 
 
 def send(text: str) -> bool:
@@ -210,8 +204,6 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="送信せず内容だけ表示")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--force", action="store_true", help="連投防止を無視して送る")
-    ap.add_argument("--state-url", default=STATE_URL_DEFAULT,
-                    help="公開中の送信状態のURL。空文字にすると取りに行かない")
     a = ap.parse_args()
     if a.selftest:
         return selftest()
@@ -222,26 +214,30 @@ def main() -> int:
     with open(LATEST, encoding="utf-8") as f:
         d = json.load(f)
 
+    # 月の区切りは日本時間で数える。朝の便りと同じ物差しにするため。
+    now = datetime.now(D.JST)
+    state = load_state()
+    used = D.month_count(state, now)
+
     text, reasons = build_message(d)
     if not text:
         print("しきい値に触れた項目はありません。通知しません。")
+        # 送らない回でも必ず書き出す。書き出さないと、この回の配信で
+        # 公開中の保存状態ごと消えてしまう（過去に実際そうなっていた）。
+        save_state(state)
         return 0
 
     fp = fingerprint(reasons)
-    now = datetime.now(timezone.utc)
-    state = load_state(a.state_url or None)
-    ok_to_send, why = gate(state, fp, now)
+    ok_to_send, why = gate(state.get("alert") or {}, fp, now, used)
 
     print(text)
     print(f"\n判定: {why}")
-    used = state.get("count", 0) if state.get("month") == now.strftime("%Y-%m") else 0
-    print(f"今月の送信数: {used} / {RULES['monthly_cap']}")
+    print(f"今月の送信数: {used} / {RULES['monthly_cap']}（朝の便りと共通）")
 
     if a.dry_run:
         print("--dry-run のため送信しませんでした。")
         return 0
     if not ok_to_send and not a.force:
-        # 状態はそのまま残す（消すと次回に上限や間隔の記録が失われるため）
         save_state(state)
         return 0
 
@@ -307,25 +303,30 @@ def selftest() -> int:
 
     # 送信の可否判定
     from datetime import timedelta as _td
-    now = datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc)
-    ck("初回は送れる", gate({}, "aaa", now)[0])
-    same = {"fingerprint": "aaa", "sent_at": (now - _td(minutes=200)).isoformat(),
-            "month": "2026-09", "count": 1}
-    ck("同じ内容なら時間が経っても送らない", not gate(same, "aaa", now)[0], gate(same, "aaa", now)[1])
-    ck("内容が変われば送る", gate(same, "bbb", now)[0])
-    fresh = {"fingerprint": "aaa", "sent_at": (now - _td(minutes=30)).isoformat(),
-             "month": "2026-09", "count": 1}
-    ck("90分経っていなければ送らない", not gate(fresh, "bbb", now)[0], gate(fresh, "bbb", now)[1])
-    capped = {"fingerprint": "x", "sent_at": (now - _td(days=2)).isoformat(),
-              "month": "2026-09", "count": RULES["monthly_cap"]}
-    ck("月間上限に達したら送らない", not gate(capped, "y", now)[0], gate(capped, "y", now)[1])
-    lastmonth = {"fingerprint": "x", "sent_at": (now - _td(days=40)).isoformat(),
-                 "month": "2026-07", "count": 999}
-    ck("月が変われば上限がリセットされる", gate(lastmonth, "y", now)[0])
-    ck("送信数が積み上がる", bump({"month": "2026-09", "count": 3}, "z", now, [])["count"] == 4)
+    now = datetime(2026, 9, 3, 12, 0, tzinfo=D.JST)
+    ck("初回は送れる", gate({}, "aaa", now, 0)[0])
+    same = {"fingerprint": "aaa", "sent_at": (now - _td(minutes=200)).isoformat()}
+    ck("同じ内容なら時間が経っても送らない", not gate(same, "aaa", now, 1)[0],
+       gate(same, "aaa", now, 1)[1])
+    ck("内容が変われば送る", gate(same, "bbb", now, 1)[0])
+    fresh = {"fingerprint": "aaa", "sent_at": (now - _td(minutes=30)).isoformat()}
+    ck("90分経っていなければ送らない", not gate(fresh, "bbb", now, 1)[0],
+       gate(fresh, "bbb", now, 1)[1])
+    ck("月間上限に達したら送らない",
+       not gate({}, "y", now, RULES["monthly_cap"])[0])
+    ck("上限の1つ手前なら送れる", gate({}, "y", now, RULES["monthly_cap"] - 1)[0])
+
+    st0 = {"month": "2026-09", "count": 3, "alert": {}, "daily": {"sent_date": "x"}}
+    st1 = bump(st0, "z", now, ["r"])
+    ck("送信数が積み上がる", st1["count"] == 4, st1["count"])
+    ck("朝の便りの記録を壊さない", st1["daily"] == {"sent_date": "x"}, st1["daily"])
     ck("月が変われば1から数え直す",
        bump({"month": "2026-08", "count": 50}, "z", now, [])["count"] == 1)
+    ck("通知の記録は alert 区画に入る", st1["alert"]["fingerprint"] == "z")
     ck("状態は公開フォルダに置く", "docs" in STATE and "data" in STATE, STATE)
+    ck("朝の便りと同じファイルを使う", STATE == D.STATE)
+    ck("上限は無料枠(200通)の範囲",
+       RULES["monthly_cap"] + 31 <= 200, RULES["monthly_cap"])
 
     ck("同じ理由なら指紋が一致", fingerprint(["a", "b"]) == fingerprint(["b", "a"]))
     ck("理由が違えば指紋も違う", fingerprint(["a"]) != fingerprint(["a", "b"]))

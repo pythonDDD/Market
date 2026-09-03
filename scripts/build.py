@@ -8,8 +8,12 @@ build.py — サイトのデータを組み立てる
   python build.py --selftest  ネット無しで全体を検証
   python build.py --mock      架空データで一通り動かし、出力の形を確認する
 
-出力: docs/data/latest.json（サイトが読む唯一のファイル）
-      docs/data/history.json（日足のキャッシュ。--live のとき再利用する）
+出力: docs/data/latest.json（サイトが最初に読む。分析結果ぜんぶ）
+      docs/data/history.json（日足と四本値。--live で再利用し、ローソク足もここから読む）
+
+以前は docs/data/ohlc.json も書いていたが、app.js は一度も読んでいなかった。
+ローソク足は history.json から描いている。毎回作って毎回配信するだけの
+死んだファイルだったので、2026-09-03 に生成をやめた。
 
 失敗しても止まらない方針。1銘柄取れなければその銘柄だけ前回値を残し、
 どの銘柄がいつから古いかを latest.json の health に必ず書く。
@@ -35,7 +39,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(ROOT, "docs", "data")
 LATEST = os.path.join(DATA_DIR, "latest.json")
 HISTORY = os.path.join(DATA_DIR, "history.json")
-OHLC = os.path.join(DATA_DIR, "ohlc.json")
 
 CRYPTO = [("BTC", "BTC-USD", "XBTUSD", "bitcoin"),
           ("ETH", "ETH-USD", "ETHUSD", "ethereum"),
@@ -491,19 +494,11 @@ def run(mode: str) -> int:
             S.log("履歴キャッシュが無いため、履歴も取得します。")
         S.log("履歴を取得します（43銘柄＋暗号資産3種）...")
         closes, ohlc, health = fetch_history(prev_hist)
+        # 四本値は history.json に同梱する。app.js もそこから読んでいる。
         write_json(HISTORY, {"generated_at": datetime.now(timezone.utc).isoformat(),
                              "closes": closes, "ohlc": ohlc})
-        # 詳細画面でしか使わないので別ファイルにする。初回表示を軽くするため。
-        write_json(OHLC, {"generated_at": datetime.now(timezone.utc).isoformat(),
-                          "days": 180,
-                          "ohlc": {k: {d: v[d] for d in sorted(v)[-180:]}
-                                   for k, v in ohlc.items() if v}})
     else:
         closes = prev_hist["closes"]
-        if prev_hist.get("ohlc") and not os.path.exists(OHLC):
-            write_json(OHLC, {"generated_at": prev_hist.get("generated_at"), "days": 180,
-                              "ohlc": {k: {d: v[d] for d in sorted(v)[-180:]}
-                                       for k, v in prev_hist["ohlc"].items() if v}})
         health = [{"key": k, "ok": True, "src": "キャッシュ", "last": max(v)}
                   for k, v in closes.items() if v]
         S.log(f"履歴キャッシュを再利用します（{len(closes)}銘柄）")

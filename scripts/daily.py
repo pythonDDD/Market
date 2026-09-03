@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-daily.py — 毎朝9時（日本時間）に、その日の市況をLINEへ1通だけ送る
+daily.py — 毎朝9時（日本時間）に、その日の市況を自分のLINEへ1通だけ送る
 
+やっていることは turtle_v2 の tbot/notify.py と同じです。
+LINE Messaging API の push に、自分のユーザーID宛で1通投げるだけ。
+違うのは、文字だけでなく「潮目の一日をまとめた画像を1枚」添えることです。
+
+  python daily.py --test         いますぐ1通だけテスト送信する（設定の確認用）
   python daily.py --tick         いまの時刻で「描く／送る／何もしない」を決める（本番）
   python daily.py --render       画像とメッセージを組み立て、docs/data に置く
   python daily.py --send         組み立て済みのものを送る（Pages配信の *後* に実行）
@@ -12,10 +17,12 @@ daily.py — 毎朝9時（日本時間）に、その日の市況をLINEへ1通�
   python daily.py --flex         Flexの中身だけを出す（LINEのシミュレータ貼り付け用）
   python daily.py --selftest     ネット無しで検証
 
-必要な環境変数（--send のときだけ）:
-  LINE_CHANNEL_TOKEN   Messaging API のチャネルアクセストークン
-  LINE_TO              送信先のユーザーID
-  （未設定なら送信せず、ログに出して正常終了する）
+必要な環境変数（送信するときだけ）:
+  LINE_TOKEN      Messaging API のチャネルアクセストークン（長期）
+  LINE_USER_ID    送信先。自分のユーザーID（U で始まる33文字）
+  turtle_v2 と同じ名前にしてあります。
+  古い名前 LINE_CHANNEL_TOKEN / LINE_TO も受け付けます。
+  どちらも未設定なら、送信せずログに出して正常終了します。
 
 なぜ2回に分けるのか（--tick の考え方）:
   LINEの画像メッセージは「公開済みのHTTPSのURL」しか受け付けません。
@@ -473,12 +480,34 @@ def build_flex(d: dict, now: datetime, image_url: str | None) -> dict:
 # ==========================================================================
 # 送信
 # ==========================================================================
+def credentials() -> tuple[str, str]:
+    """トークンと宛先を環境変数から取る。turtle_v2 と同じ名前を優先する。"""
+    token = (os.environ.get("LINE_TOKEN")
+             or os.environ.get("LINE_CHANNEL_TOKEN") or "").strip()
+    to = (os.environ.get("LINE_USER_ID")
+          or os.environ.get("LINE_TO") or "").strip()
+    return token, to
+
+
+def explain_http(code: int) -> str:
+    """LINEが返した番号の意味。原因が分からないと直せないので書き出す。"""
+    return {401: "トークンが無効です。チャネルアクセストークンを再発行してください",
+            400: "宛先IDが不正か、そのBotを友だち追加していません",
+            403: "そのチャネルにMessaging APIの権限がありません",
+            429: "送信数の上限に達しています（無料枠は月200通）",
+            500: "LINE側の一時的な障害です"}.get(code, "")
+
+
 def push(messages: list) -> tuple[bool, int, str]:
-    token = os.environ.get("LINE_CHANNEL_TOKEN", "").strip()
-    to = os.environ.get("LINE_TO", "").strip()
+    token, to = credentials()
     if not token or not to:
-        print("LINE_CHANNEL_TOKEN / LINE_TO が未設定のため、送信しません。")
+        print("LINE_TOKEN / LINE_USER_ID が未設定のため、送信しません。")
         return False, 0, "未設定"
+    if not to.startswith("U"):
+        # LINE ID（@から始まるもの）を貼ってしまう間違いが多い
+        print(f"宛先が 'U' で始まっていません（{to[:3]}…）。"
+              "LINE ID(@xxxx)ではなく、ユーザーIDが必要です。")
+        return False, 0, "宛先が不正"
     body = json.dumps({"to": to, "messages": messages}).encode()
     req = urllib.request.Request(
         "https://api.line.me/v2/bot/message/push", data=body, method="POST",
@@ -493,6 +522,9 @@ def push(messages: list) -> tuple[bool, int, str]:
         # 応答本文にトークンは含まれない。原因が分からないと直せないので出す。
         msg = e.read().decode("utf-8", "replace")[:400]
         print(f"送信失敗 HTTP {e.code}: {msg}")
+        hint = explain_http(e.code)
+        if hint:
+            print(f"  → {hint}")
         return False, e.code, msg
     except Exception as e:  # noqa: BLE001
         print(f"送信失敗: {type(e).__name__}: {e}")
@@ -686,6 +718,31 @@ def cmd_send(dry: bool = False, force: bool = False, skip_verify: bool = False,
     return 0
 
 
+def cmd_test() -> int:
+    """いますぐ1通だけ送って、設定が正しいかを確かめる。
+
+    turtle_v2 の test_line() と同じ役目です。ここが通らなければ
+    朝の便りも絶対に届きません。まずこれを通してください。
+    """
+    token, to = credentials()
+    print("LINEの設定を確認します。")
+    print(f"  トークン : {'あり（' + str(len(token)) + '文字）' if token else 'なし'}")
+    print(f"  宛先     : {to[:5] + '…' + to[-4:] if len(to) > 10 else (to or 'なし')}")
+    if not token or not to:
+        print("環境変数 LINE_TOKEN / LINE_USER_ID を設定してください。")
+        return 1
+    now = datetime.now(JST)
+    ok, code, _ = push([{"type": "text", "text":
+                         f"【潮目】テスト送信です。\n"
+                         f"これが届けば設定は正しいです。\n"
+                         f"{now.year}年{now.month}月{now.day}日 "
+                         f"{now.hour:02d}:{now.minute:02d} JST"}])
+    if ok:
+        print("スマホを確認してください。")
+        return 0
+    return 1
+
+
 def cmd_carry() -> int:
     """公開中の保存物を docs/data に引き継ぐ。
 
@@ -877,9 +934,20 @@ def selftest() -> int:
     ck("上限が無料枠(200通)を超えていない", MONTHLY_CAP_DAILY < 200)
     ck("公開URLがHTTPS", SITE.startswith("https://"), SITE)
 
-    os.environ.pop("LINE_CHANNEL_TOKEN", None)
-    os.environ.pop("LINE_TO", None)
+    for k in ("LINE_TOKEN", "LINE_CHANNEL_TOKEN", "LINE_USER_ID", "LINE_TO"):
+        os.environ.pop(k, None)
     ck("未設定なら送信しない", push([{"type": "text", "text": "x"}])[0] is False)
+    os.environ["LINE_TOKEN"] = "dummy"
+    os.environ["LINE_USER_ID"] = "@abcdef"
+    ck("宛先がLINE IDなら送らずに教える",
+       push([{"type": "text", "text": "x"}])[2] == "宛先が不正")
+    os.environ["LINE_CHANNEL_TOKEN"] = "old"
+    os.environ.pop("LINE_TOKEN")
+    ck("古い名前でも読める", credentials()[0] == "old")
+    for k in ("LINE_TOKEN", "LINE_CHANNEL_TOKEN", "LINE_USER_ID", "LINE_TO"):
+        os.environ.pop(k, None)
+    ck("401の意味を説明できる", "再発行" in explain_http(401))
+    ck("400の意味を説明できる", "友だち" in explain_http(400))
 
     src = open(__file__, encoding="utf-8").read().split("def selftest()")[0]
     import re as _re
@@ -894,6 +962,8 @@ def selftest() -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--test", action="store_true",
+                    help="いますぐ1通だけテスト送信する")
     ap.add_argument("--tick", action="store_true",
                     help="時刻を見て描画/送信/待機を自動で決める（本番の入口）")
     ap.add_argument("--render", action="store_true")
@@ -925,6 +995,8 @@ def main() -> int:
                        f"{SITE}/data/daily.png?v=preview")
         print(json.dumps(f["contents"], ensure_ascii=False, indent=2))
         return 0
+    if a.test:
+        return cmd_test()
     if a.tick:
         return cmd_tick()
     if a.render:

@@ -8,9 +8,10 @@ notify.py — latest.json を見て、条件に当たったときだけ通知を
   python notify.py               実際に送る（環境変数が必要）
 
 必要な環境変数（GitHub Actions では Secrets に入れる）:
-  LINE_CHANNEL_TOKEN   LINE Messaging API のチャネルアクセストークン
-  LINE_TO              送信先のユーザーIDまたはグループID
-  （どちらも未設定なら、送信はせずログに出すだけで正常終了する）
+  LINE_TOKEN      LINE Messaging API のチャネルアクセストークン
+  LINE_USER_ID    送信先。自分のユーザーID（turtle_v2 と同じ名前）
+  古い名前 LINE_CHANNEL_TOKEN / LINE_TO も受け付ける。
+  どちらも未設定なら、送信はせずログに出すだけで正常終了する。
 
 LINE について正直に:
   以前広く使われていた LINE Notify は 2025年3月末で終了したと記憶していますが、
@@ -36,11 +37,8 @@ import argparse
 import hashlib
 import json
 import os
-import ssl
 import sys
-import urllib.error
-import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import daily as D          # noqa: E402  保存状態の読み書きを共有する
@@ -111,27 +109,12 @@ def bump(st: dict, fp: str, now: datetime, reasons: list[str]) -> dict:
 
 
 def send(text: str) -> bool:
-    """LINE Messaging API に push する。未設定なら送らずに False を返す。"""
-    token = os.environ.get("LINE_CHANNEL_TOKEN", "").strip()
-    to = os.environ.get("LINE_TO", "").strip()
-    if not token or not to:
-        print("LINE_CHANNEL_TOKEN / LINE_TO が未設定のため、送信しません。")
-        return False
-    body = json.dumps({"to": to, "messages": [{"type": "text", "text": text[:4900]}]}).encode()
-    req = urllib.request.Request(
-        "https://api.line.me/v2/bot/message/push", data=body, method="POST",
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"})
-    try:
-        with urllib.request.urlopen(req, timeout=20,
-                                    context=ssl.create_default_context()) as r:
-            print(f"送信しました（HTTP {r.getcode()}）")
-            return True
-    except urllib.error.HTTPError as e:
-        # 本文にトークンは含まれないので、そのまま出して差し支えない
-        print(f"送信失敗 HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:200]}")
-    except Exception as e:  # noqa: BLE001
-        print(f"送信失敗: {type(e).__name__}: {e}")
-    return False
+    """LINE Messaging API に push する。未設定なら送らずに False を返す。
+
+    認証情報の取り出しと番号の説明は daily.py と共有している。
+    """
+    ok, _code, _err = D.push([{"type": "text", "text": text[:4900]}])
+    return ok
 
 
 def build_message(d: dict, rules: dict = RULES) -> tuple[str, list[str]]:
@@ -331,8 +314,8 @@ def selftest() -> int:
     ck("同じ理由なら指紋が一致", fingerprint(["a", "b"]) == fingerprint(["b", "a"]))
     ck("理由が違えば指紋も違う", fingerprint(["a"]) != fingerprint(["a", "b"]))
 
-    os.environ.pop("LINE_CHANNEL_TOKEN", None)
-    os.environ.pop("LINE_TO", None)
+    for _k in ("LINE_TOKEN", "LINE_CHANNEL_TOKEN", "LINE_USER_ID", "LINE_TO"):
+        os.environ.pop(_k, None)
     ck("未設定なら送信せずFalse", send("テスト") is False)
 
     # このテスト自身が文字列を含むので、セルフテスト部より前だけを検査する

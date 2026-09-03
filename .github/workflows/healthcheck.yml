@@ -1,0 +1,32 @@
+name: データソース疎通確認
+
+# 手動実行のみ。GitHub Actions のランナー（米国データセンター）から
+# 各APIが本当に叩けるかを実測するためのもの。
+# ローカルPC（日本）とは結果が変わる可能性が高いので、必ず両方で測る。
+on:
+  workflow_dispatch:
+
+jobs:
+  healthcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: セルフテスト（パーサの検証）
+        run: python scripts/healthcheck.py --selftest
+
+      - name: 実疎通確認
+        run: python scripts/healthcheck.py
+        # 一部が落ちても最後まで走らせ、結果を成果物として残す
+        continue-on-error: true
+
+      - name: 結果をアーティファクトとして保存
+        uses: actions/upload-artifact@v4
+        with:
+          name: healthcheck-result
+          path: scripts/healthcheck_result.json
+          if-no-files-found: warn

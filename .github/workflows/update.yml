@@ -48,7 +48,12 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v6
+      # 版番号について:
+      # 2026-09-03 に v6 / v5 系へ上げたところ、以降の実行が止まった。
+      # 存在しないタグを指定した可能性が高いため、実際に緑で通っていた
+      # この組み合わせに戻してある。Node 20 の警告は出るが動く。
+      # 上げ直すときは 1つずつ変えて、どれが原因か分かるようにすること。
+      - uses: actions/checkout@v4
 
       # 何がきっかけで動いたのかをログの先頭に残す。
       # 「予約が動いていない」を確かめるには、これが一番早い。
@@ -58,7 +63,7 @@ jobs:
           echo "時刻(UTC) : $(date -u '+%Y-%m-%d %H:%M:%S')"
           echo "時刻(JST) : $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M:%S')"
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -117,14 +122,14 @@ jobs:
         run: python scripts/notify.py
         continue-on-error: true
 
-      - uses: actions/configure-pages@v6
+      - uses: actions/configure-pages@v5
         if: ${{ ! inputs.line_test }}
 
-      - uses: actions/upload-pages-artifact@v5
+      - uses: actions/upload-pages-artifact@v3
         if: ${{ ! inputs.line_test }}
         with:
           path: docs
 
       - id: deployment
         if: ${{ ! inputs.line_test }}
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@v4

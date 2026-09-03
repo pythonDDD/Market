@@ -2,6 +2,12 @@ name: サイト更新
 
 # 15分ごとに実行し、GitHub Pages へ直接配信する。
 # データをリポジトリにコミットしないので、履歴が膨らまない。
+#
+# 朝の便り（LINE）もこのワークフローに相乗りしている。
+#   8:40以降の実行 → 画像を描いて docs/data に置く（この回の配信で公開される）
+#   9:00以降の実行 → 公開されたURLを確かめてから送る
+# 専用のワークフローを別に立てると「送った」という記録を配信物に残せず、
+# 翌日以降の重複判定が効かないため、あえて相乗りにしている。
 on:
   schedule:
     - cron: "*/15 * * * *"
@@ -34,6 +40,8 @@ jobs:
       - name: セルフテスト
         run: |
           python scripts/build.py --selftest
+          python scripts/chart.py --selftest
+          python scripts/daily.py --selftest
           python scripts/notify.py --selftest
 
       - name: データ取得と分析
@@ -41,13 +49,27 @@ jobs:
           python scripts/build.py --auto \
             --seed-url https://pythonddd.github.io/Market/data/history.json
 
+      # docs をまるごと配信し直すため、引き継がないと
+      # 保存状態も昨日の画像も毎回消える。
+      - name: 前回の配信物を引き継ぐ
+        run: python scripts/daily.py --carry
+        continue-on-error: true
+
       - name: 出力の確認
         run: |
           ls -la docs/data/
           python -c "import json;d=json.load(open('docs/data/latest.json',encoding='utf-8'));print('取得', d['health']['ok'], '/', d['health']['total'], '銘柄');print('生成', d['generated_at'])"
 
-      # 通知は配信の前に置く。しきい値に触れていなければ何も送らない。
+      # 朝の便り。時刻を見て「描く／送る／何もしない」を自分で決める。
       # Secrets が未設定なら送信せずログに出すだけで、失敗にはしない。
+      - name: 朝の便り
+        env:
+          LINE_CHANNEL_TOKEN: ${{ secrets.LINE_CHANNEL_TOKEN }}
+          LINE_TO: ${{ secrets.LINE_TO }}
+        run: python scripts/daily.py --tick
+        continue-on-error: true
+
+      # 異常が出たときだけ飛ぶ通知。配信の前に置く。
       - name: 通知の判定
         env:
           LINE_CHANNEL_TOKEN: ${{ secrets.LINE_CHANNEL_TOKEN }}
@@ -63,4 +85,3 @@ jobs:
 
       - id: deployment
         uses: actions/deploy-pages@v4
-

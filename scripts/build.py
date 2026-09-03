@@ -153,7 +153,7 @@ def build_analytics(closes: dict[str, dict]) -> dict:
     # --- 銘柄ごとの要約 ---
     summary = []
     for key, name, code, cat, unit, cur, major in S.SYMBOLS + [
-            ("BTC", "ビットコイン", "BTC-USD", "暗号資産", "price", "USD", True),
+            ("BTC", "ビットコイン", "BTC-USD", "暗号資産", "price", "USD", True),  # Coinbase
             ("ETH", "イーサリアム", "ETH-USD", "暗号資産", "price", "USD", True),
             ("SOL", "ソラナ", "SOL-USD", "暗号資産", "price", "USD", False)]:
         s = closes.get(key)
@@ -413,18 +413,23 @@ def fx_adjusted(closes):
         if not s:
             continue
         ks, sv, fx = A.align(s, usdjpy)
-        if len(ks) < 260:
+        # Coinbaseの日足は約350暦日ぶんしかなく、営業日に揃えると250日程度になる。
+        # 260日で足切りしていたためビットコインが表から落ちていた。
+        if len(ks) < 200:
             continue
         native = S.SYM_BY_KEY.get(key, (None, None, None, None, None, "USD"))[5]
         # 円建て系列とドル建て系列を作る
         jpy = [v if native == "JPY" else v * f for v, f in zip(sv, fx)]
         usd = [v / f if native == "JPY" else v for v, f in zip(sv, fx)]
         y0 = next((i for i, k in enumerate(ks) if k >= f"{ks[-1][:4]}-01-01"), 0)
+        # 1年前の位置。データが252営業日に満たない銘柄では先頭を使う
+        i1 = -252 if len(ks) >= 252 else 0
         out.append({"key": key, "name": label,
                     "ytd_jpy": rnd((jpy[-1] / jpy[y0] - 1) * 100, 2),
                     "ytd_usd": rnd((usd[-1] / usd[y0] - 1) * 100, 2),
-                    "y1_jpy": rnd((jpy[-1] / jpy[-252] - 1) * 100, 2),
-                    "y1_usd": rnd((usd[-1] / usd[-252] - 1) * 100, 2)})
+                    "y1_days": len(ks) - (len(ks) + i1 if i1 < 0 else 0) if i1 < 0 else len(ks),
+                    "y1_jpy": rnd((jpy[-1] / jpy[i1] - 1) * 100, 2),
+                    "y1_usd": rnd((usd[-1] / usd[i1] - 1) * 100, 2)})
     return out
 
 
@@ -670,6 +675,8 @@ def selftest() -> int:
        an.get("corr_ci"))
     ck("分布に日付が入る", all("date" in v for v in an["distribution"].values()))
     ck("要約に外部リンク用のコードが入る", all(r.get("code") for r in an["summary"]))
+    fxk = {r["key"] for r in an["fx_adjusted"]}
+    ck("円建て比較にビットコインが入る", "BTC" in fxk, sorted(fxk))
     ck("通貨換算が出る", len(an["fx_adjusted"]) > 0, len(an["fx_adjusted"]))
 
     # 利回りは差分で扱えているか

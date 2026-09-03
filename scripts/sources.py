@@ -124,7 +124,7 @@ SYMBOLS = [
     ("US30Y",  "米30年債利回り",    "^TYX",      "金利",    "rate",  "%",   False),
     ("US3M",   "米13週債利回り",    "^IRX",      "金利",    "rate",  "%",   False),
 
-    ("BTCY",   "ビットコイン参考",   "BTC-USD",   "暗号資産", "price", "USD", False),
+    ("BTCY",   "BTC（Yahoo・照合用）", "BTC-USD",  "暗号資産", "price", "USD", False),
 ]
 
 SYM_BY_KEY = {s[0]: s for s in SYMBOLS}

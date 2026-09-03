@@ -48,7 +48,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # 何がきっかけで動いたのかをログの先頭に残す。
       # 「予約が動いていない」を確かめるには、これが一番早い。
@@ -58,7 +58,7 @@ jobs:
           echo "時刻(UTC) : $(date -u '+%Y-%m-%d %H:%M:%S')"
           echo "時刻(JST) : $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M:%S')"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -117,14 +117,14 @@ jobs:
         run: python scripts/notify.py
         continue-on-error: true
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
         if: ${{ ! inputs.line_test }}
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         if: ${{ ! inputs.line_test }}
         with:
           path: docs
 
       - id: deployment
         if: ${{ ! inputs.line_test }}
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

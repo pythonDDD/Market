@@ -122,6 +122,10 @@ SYMBOLS = [
 
     ("US10Y",  "米10年債利回り",    "^TNX",      "金利",    "rate",  "%",   True),
     ("US30Y",  "米30年債利回り",    "^TYX",      "金利",    "rate",  "%",   False),
+    # 日本国債の「利回り」はYahooに存在しない（2026-09-04に9記号を実測、全て404）。
+    # 唯一取れた日本国債そのものの商品がこのETF。ただし中身は利回りではなく価格で、
+    # 金利が上がれば下がる。単位も%変化であって pt ではない。取り違えないこと。
+    ("JPGB",   "日本国債ETF（価格）", "2561.T",   "金利",    "price", "JPY", False),
 
     ("BTCY",   "BTC（Yahoo・照合用）", "BTC-USD",  "暗号資産", "price", "USD", False),
 ]
@@ -348,7 +352,7 @@ def selftest() -> int:
         if not cond:
             fails.append(name)
 
-    ck("銘柄定義が42件", len(SYMBOLS) == 42, len(SYMBOLS))
+    ck("銘柄定義が43件", len(SYMBOLS) == 43, len(SYMBOLS))
     ck("キーが重複していない", len({s[0] for s in SYMBOLS}) == len(SYMBOLS))
     ck("Yahooコードが重複していない", len({s[2] for s in SYMBOLS}) == len(SYMBOLS))
     ck("解決しなかった^TOPXを含まない", "^TOPX" not in {s[2] for s in SYMBOLS})
@@ -360,7 +364,9 @@ def selftest() -> int:
         ck(f"{host} を呼び出していない", host not in src)
 
     rates = [s[0] for s in SYMBOLS if s[4] == "rate"]
-    ck("利回りは米10年と30年の2本", sorted(rates) == ["US10Y", "US30Y"], rates)
+    ck("利回り（rate）は米10年と30年の2本", sorted(rates) == ["US10Y", "US30Y"], rates)
+    ck("日本国債は価格として扱う",
+       SYM_BY_KEY["JPGB"][4] == "price", SYM_BY_KEY["JPGB"][4])
     ck("リスク指数に必要な銘柄が揃っている",
        all(k in SYM_BY_KEY for k in ("SPX", "VIX", "GOLD", "COPPER", "US10Y", "DXY")))
 

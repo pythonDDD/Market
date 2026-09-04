@@ -626,7 +626,7 @@ def selftest() -> int:
 
     closes = mock_closes()
     an = build_analytics(closes)
-    ck("要約が45件（42銘柄＋暗号資産3）", len(an["summary"]) == 45, len(an["summary"]))
+    ck("要約が46件（43銘柄＋暗号資産3）", len(an["summary"]) == 46, len(an["summary"]))
     ck("異常スキャンが出る", len(an["scan"]) > 0, len(an["scan"]))
     ck("スキャンがzの大きい順", all(abs(an["scan"][i]["z"]) >= abs(an["scan"][i+1]["z"])
        for i in range(len(an["scan"])-1)))

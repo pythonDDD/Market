@@ -293,7 +293,7 @@ function drawDecomp(D) {
        <span><i style="background:${cIdio}"></i>ビットコイン固有の動き</span></div>
      <div class="formula">
        <div class="fml-eq">BTC<sub>日次</sub> = α + β × SPX<sub>日次</sub> + 誤差</div>
-       <div class="fml-num">= ${d.alpha >= 0 ? '+' : '−'}${Math.abs(d.alpha * 100).toFixed(3)}%
+       <div class="fml-num">= ${d.alpha >= 0 ? '+' : '−'}${Math.abs(d.alpha).toFixed(3)}%
          ${d.beta >= 0 ? '+' : '−'} ${Math.abs(d.beta).toFixed(2)} × SPX<sub>日次</sub></div>
        <div class="fml-note">最小二乗法・過去252営業日・日次リターン</div>
      </div>

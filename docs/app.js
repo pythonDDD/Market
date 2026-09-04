@@ -7,7 +7,7 @@
 const C = {
   grid: '#22323D', axis: '#3B5262', text: '#8CA3B2', ink: '#E4EFF2',
   sky: '#84D2F5', aqua: '#B0F1F0', cyan: '#00B4D8', navy: '#5E8FB5',
-  up: '#FF7A6E', down: '#5AB4E8', alert: '#FFEB3B',
+  up: '#3FD68C', down: '#FF6B6B', alert: '#FFEB3B',
   band10: '#1B3A46', band25: '#2B6E8C', line: '#B0F1F0',
   histIn: '#3E7E9E', histOut: '#22323D',
 };
@@ -123,6 +123,25 @@ async function main() {
   render(D);
 }
 
+/* パーセンタイルが何を意味するかを日本語で言い換える。
+   位置だけ示しても「で、それは珍しいのか」が伝わらないため。
+   頻度は「およそ何営業日に1度か」で表す（1年＝252営業日）。 */
+function PCT_MEAN(p) {
+  if (p == null) return '';
+  const tail = p >= 50 ? (100 - p) : p;      /* 端からの距離 */
+  const dir  = p >= 50 ? '上' : '下';
+  const once = tail <= 0 ? null : Math.round(100 / tail);
+  const rare = tail >= 25 ? 'ごく普通の値動きです。'
+             : tail >= 10 ? 'やや大きめですが、珍しくはありません。'
+             : tail >= 5  ? '大きめの部類です。'
+             : tail >= 1  ? 'かなり大きい部類です。'
+             :              '過去2年でほとんど例のない大きさです。';
+  /* 中央付近で「2日に1度」と書いても意味がないので、端に寄ったときだけ頻度を出す */
+  return `つまり過去2年の中で${dir}から約${tail}%の位置です。`
+       + (once && tail < 25 ? `これくらいの動きは、おおよそ${once}営業日に1度しか起きません。` : '')
+       + rare;
+}
+
 function render(D) {
   const gen = new Date(D.generated_at);
   const ageMin = Math.round((Date.now() - gen.getTime()) / 60000);
@@ -133,16 +152,21 @@ function render(D) {
   if (D.mode === 'mock') {
     $('banner').className = 'banner stale';
     $('banner').textContent = 'これは架空データによる表示です。実際の市場価格ではありません。';
-  } else if (ageMin > 60) {
+  } else if (ageMin > 90) {
+    /* しきい値は実測に合わせてある。GitHubの定期実行は混雑時に大量に間引かれ、
+       15分ごとに設定していても実際は1〜2時間空くことがある（実測で確認済み）。
+       30分や60分で警告を出すと、平常時にも鳴り続けて警告の意味を失う。 */
     $('banner').className = 'banner stale';
-    $('banner').textContent = `データが ${ageMin} 分前のものです。更新処理が止まっている可能性があります。`;
+    $('banner').textContent = `データが ${ageMin} 分前のものです。`
+      + `更新はGitHubの空き具合しだいで、1時間以上空くことがあります。`
+      + `半日以上動いていなければ、更新処理が止まっています。`;
   } else if (stale > 0) {
     $('banner').className = 'banner stale';
     $('banner').textContent = `${stale} 銘柄の取得に失敗し、前回値のまま表示しています：`
       + h.stale.map(s => s.key).join(', ');
   }
   $('stamp').innerHTML =
-    `<span><span class="dot${ageMin > 60 ? ' warn' : ''}"></span>最終更新 <b>${gen.toLocaleString('ja-JP')}</b>（${ageMin}分前）</span>`
+    `<span><span class="dot${ageMin > 90 ? ' warn' : ''}"></span>最終更新 <b>${gen.toLocaleString('ja-JP')}</b>（${ageMin}分前）</span>`
     + `<span>取得 <b>${h.ok || 0}/${h.total || 0} 銘柄</b></span>`
     + `<span>処理 <b>${D.build_seconds || '—'}秒</b></span>`
     + `<span>更新間隔 <b>15分</b></span>`;
@@ -264,7 +288,15 @@ function drawDecomp(D) {
      </div>
      <div class="dlg"><span><i style="background:var(--sky)"></i>株式で説明できる分</span>
        <span><i style="background:${cIdio}"></i>ビットコイン固有の動き</span></div>
-     <p class="note">過去252営業日の回帰で β=${F(d.beta, 2)}、決定係数 R²=${F(d.r2, 2)}。
+     <div class="formula">
+       <div class="fml-eq">BTC<sub>日次</sub> = α + β × SPX<sub>日次</sub> + 誤差</div>
+       <div class="fml-num">= ${d.alpha >= 0 ? '+' : '−'}${Math.abs(d.alpha * 100).toFixed(3)}%
+         ${d.beta >= 0 ? '+' : '−'} ${Math.abs(d.beta).toFixed(2)} × SPX<sub>日次</sub></div>
+       <div class="fml-note">最小二乗法・過去252営業日・日次リターン</div>
+     </div>
+     <p class="note">αは「S&amp;P500が動かなかった日にビットコインが平均どれだけ動くか」、
+       βは「S&amp;P500が1%動いたときビットコインが何%動くか」です。
+       決定係数 R²=${F(d.r2, 2)}。
        つまりこの期間のビットコインの値動きのうち、S&amp;P500で説明できるのは
        <b>${(d.r2 * 100).toFixed(0)}%</b> だけです。</p>
      <p class="note">この日付は、ビットコインとS&amp;P500の<b>両方に終値がある直近の日</b>です。
@@ -299,7 +331,7 @@ function drawDecomp(D) {
 
 /* ---------- ローリング相関 ---------- */
 const CORR_STYLE = { SPX: ['S&P500', '#B0F1F0', 2.6], NDX: ['ナスダック100', '#84D2F5', 1.8],
-  GOLD: ['金', '#00B4D8', 1.8], DXY: ['ドル指数', '#FF7A6E', 1.6] };
+  GOLD: ['金', '#00B4D8', 1.8], DXY: ['ドル指数', '#3FD68C', 1.6] };
 function drawCorr(D) {
   const R = D.rolling_corr || {};
   const series = Object.entries(R).filter(([k, v]) => v && v.length > 5);
@@ -467,7 +499,7 @@ function drawDist(D) {
       `<div class="card"><svg id="${id}" viewBox="0 0 460 220"></svg>
        <p class="note">${nm[k] || k}${d.date ? `（${d.date}）` : ''} の直近値は
        <b>${SGN(d.now)}</b>。過去2年の分布で下から
-       <b>${F(d.pctile, 0)} パーセンタイル</b>です。</p></div>`);
+       <b>${F(d.pctile, 0)} パーセンタイル</b>です。${PCT_MEAN(d.pctile)}</p></div>`);
     const V = d.values, B = 41;
     const lo = Math.min(...V), hi = Math.max(...V), bw = (hi - lo) / B || 1;
     const bins = new Array(B).fill(0);

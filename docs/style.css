@@ -17,8 +17,8 @@
   --aqua:#B0F1F0;
   --cyan:#00B4D8;
   --alert:#FFEB3B;
-  --up:#FF7A6E;          /* 上昇。暗地で沈まないよう明るめの珊瑚色 */
-  --down:#5AB4E8;        /* 下落 */
+  --up:#3FD68C;          /* 上昇＝緑。暗地で沈まないよう明度を上げてある */
+  --down:#FF6B6B;        /* 下落＝赤 */
 
   --sans:"Zen Kaku Gothic New",system-ui,sans-serif;
   --serif:"Shippori Mincho",serif;
@@ -257,3 +257,17 @@ tr.clickable:focus-visible{outline:2px solid var(--sky);outline-offset:-2px}
 .modal-link{margin:14px 0 0;font-size:12.5px}
 .modal-link a{color:var(--sky)}
 @media (max-width:640px){.modal{padding:10px}.modal-inner{padding:16px 14px 12px}}
+
+/* BTCの分解で使う回帰式の表示。数式は等幅で、記号を大きめに出す。 */
+.formula{margin:14px 0 10px;padding:14px 16px;background:#131F27;
+  border:1px solid var(--hair);border-radius:10px}
+.formula .fml-eq{font-size:17px;color:var(--deep);letter-spacing:.02em}
+.formula .fml-num{margin-top:6px;font-size:19px;font-weight:700;color:var(--ink);
+  font-family:"Courier New",monospace}
+.formula .fml-note{margin-top:8px;font-size:11.5px;color:var(--muted)}
+.formula sub{font-size:.7em;color:var(--muted)}
+@media (max-width:640px){
+  .formula{padding:12px}
+  .formula .fml-eq{font-size:15px}
+  .formula .fml-num{font-size:16px}
+}

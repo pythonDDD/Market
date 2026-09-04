@@ -77,11 +77,12 @@ SYMBOLS = [
     # (キー, 表示名, Yahooコード, 分類, 単位, 通貨, 主要か)
     ("SPX",    "S&P500",        "^GSPC",     "米国株",  "index", "USD", True),
     ("DJI",    "ダウ平均",        "^DJI",      "米国株",  "index", "USD", True),
-    ("IXIC",   "ナスダック総合",    "^IXIC",     "米国株",  "index", "USD", False),
     ("NDX",    "ナスダック100",   "^NDX",      "米国株",  "index", "USD", True),
-    ("RUT",    "ラッセル2000",    "^RUT",      "米国株",  "index", "USD", False),
-    ("SOX",    "SOX半導体",       "^SOX",      "米国株",  "index", "USD", False),
     ("VIX",    "VIX恐怖指数",     "^VIX",      "米国株",  "index", "pt",  True),
+    ("MSFT",   "マイクロソフト",    "MSFT",      "米国株",  "price", "USD", False),
+    ("AAPL",   "アップル",          "AAPL",      "米国株",  "price", "USD", False),
+    ("GOOG",   "アルファベット",    "GOOG",      "米国株",  "price", "USD", False),
+    ("SPCX",   "スペースX",          "SPCX",      "米国株",  "price", "USD", False),
 
     ("ES",     "S&P500先物",     "ES=F",      "先物",    "price", "USD", False),
     ("NQ",     "ナスダック100先物", "NQ=F",      "先物",    "price", "USD", False),
@@ -119,10 +120,8 @@ SYMBOLS = [
     ("USDCNY", "米ドル/人民元",     "CNY=X",     "為替",    "price", "CNY", False),
     ("DXY",    "ドル指数",         "DX-Y.NYB",  "為替",    "index", "pt",  True),
 
-    ("US2Y",   "米2年債利回り",     "^FVX",      "金利",    "rate",  "%",   False),
     ("US10Y",  "米10年債利回り",    "^TNX",      "金利",    "rate",  "%",   True),
     ("US30Y",  "米30年債利回り",    "^TYX",      "金利",    "rate",  "%",   False),
-    ("US3M",   "米13週債利回り",    "^IRX",      "金利",    "rate",  "%",   False),
 
     ("BTCY",   "BTC（Yahoo・照合用）", "BTC-USD",  "暗号資産", "price", "USD", False),
 ]
@@ -349,9 +348,9 @@ def selftest() -> int:
         if not cond:
             fails.append(name)
 
-    ck("銘柄定義が43件", len(SYMBOLS) == 43, len(SYMBOLS))
-    ck("キーが重複していない", len({s[0] for s in SYMBOLS}) == 43)
-    ck("Yahooコードが重複していない", len({s[2] for s in SYMBOLS}) == 43)
+    ck("銘柄定義が42件", len(SYMBOLS) == 42, len(SYMBOLS))
+    ck("キーが重複していない", len({s[0] for s in SYMBOLS}) == len(SYMBOLS))
+    ck("Yahooコードが重複していない", len({s[2] for s in SYMBOLS}) == len(SYMBOLS))
     ck("解決しなかった^TOPXを含まない", "^TOPX" not in {s[2] for s in SYMBOLS})
     # 疎通確認で落ちたソースを、うっかり呼び出していないか確認する。
     # このテスト自身がドメイン名を含むので、セルフテスト部より前だけを検査する。
@@ -361,7 +360,7 @@ def selftest() -> int:
         ck(f"{host} を呼び出していない", host not in src)
 
     rates = [s[0] for s in SYMBOLS if s[4] == "rate"]
-    ck("利回りが4本ある", sorted(rates) == ["US10Y", "US2Y", "US30Y", "US3M"], rates)
+    ck("利回りは米10年と30年の2本", sorted(rates) == ["US10Y", "US30Y"], rates)
     ck("リスク指数に必要な銘柄が揃っている",
        all(k in SYM_BY_KEY for k in ("SPX", "VIX", "GOLD", "COPPER", "US10Y", "DXY")))
 

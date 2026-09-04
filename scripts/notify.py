@@ -169,7 +169,13 @@ def build_message(d: dict, rules: dict = RULES) -> tuple[str, list[str]]:
         lines = lines[:rules["max_lines"]] + [f"・ほか {rest} 件"]
 
     gen = d.get("generated_at", "")
-    head = f"【潮目】{gen[:16].replace('T', ' ')} UTC"
+    # 見出しは日本時間で出す。UTCのまま出していて9時間ずれて見えた。
+    try:
+        _t = datetime.fromisoformat(gen).astimezone(D.JST)
+        head = (f"【潮目】{_t.year}年{_t.month}月{_t.day}日 "
+                f"{_t.hour:02d}:{_t.minute:02d} JST")
+    except Exception:  # noqa: BLE001
+        head = "【潮目】"
     tail = "https://pythonddd.github.io/Market/"
     return "\n".join([head, ""] + lines + ["", tail]), reasons
 
@@ -255,7 +261,7 @@ def selftest() -> int:
     loud["scan"][0]["z"] = -3.4
     t, r = build_message(loud)
     ck("3.4σで通知する", "金" in t and "-3.4σ" in t.replace("−", "-"), t[:80])
-    ck("見出しに日時が入る", "2026-09-03 03:29" in t, t[:40])
+    ck("見出しが日本時間になっている", "2026年9月3日 12:29 JST" in t, t[:40])
     ck("末尾にURLが入る", "pythonddd.github.io" in t)
 
     cross = json.loads(json.dumps(quiet))

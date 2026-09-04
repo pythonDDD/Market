@@ -92,7 +92,7 @@ PAL = {k: C.rgb(v) for k, v in {
     "bg": "#0E161C", "card": "#18242D", "card2": "#1E2E39", "band": "#16272E",
     "hair": "#293B48", "grid": "#22323D", "axis": "#3B5262",
     "ink": "#E4EFF2", "muted": "#8CA3B2", "deep": "#B0F1F0", "sky": "#84D2F5",
-    "cyan": "#00B4D8", "alert": "#FFEB3B", "up": "#FF7A6E", "down": "#5AB4E8",
+    "cyan": "#00B4D8", "alert": "#FFEB3B", "up": "#3FD68C", "down": "#FF6B6B",
 }.items()}
 
 W, H = 900, 1240
@@ -388,7 +388,7 @@ def build_flex(d: dict, now: datetime, image_ok: bool = True) -> dict:
     if rv is not None:
         mood = "リスクオン" if rv > 20 else ("リスクオフ" if rv < -20 else "中立")
     gauge = 50 if rv is None else int(max(0, min(100, (rv + 100) / 2)))
-    rcol = "#FF7A6E" if (rv or 0) > 0 else "#5AB4E8"
+    rcol = "#3FD68C" if (rv or 0) > 0 else "#FF6B6B"
 
     body: list = [
         {"type": "text", "text": "リスク選好", "size": "sm", "color": "#8CA3B2"},
@@ -408,7 +408,7 @@ def build_flex(d: dict, now: datetime, image_ok: bool = True) -> dict:
 
     btc = next((r for r in (d.get("summary") or []) if r.get("key") == "BTC"), None)
     if btc:
-        col = "#FF7A6E" if (btc.get("chg1d") or 0) >= 0 else "#5AB4E8"
+        col = "#3FD68C" if (btc.get("chg1d") or 0) >= 0 else "#FF6B6B"
         body.append({"type": "box", "layout": "vertical", "margin": "lg", "spacing": "sm",
                      "contents": [
                          _row("ビットコイン",
@@ -436,7 +436,7 @@ def build_flex(d: dict, now: datetime, image_ok: bool = True) -> dict:
                      "color": "#8CA3B2", "margin": "lg"})
         mv = []
         for r in rows[:5]:
-            col = "#FF7A6E" if (r.get("chg1d") or 0) >= 0 else "#5AB4E8"
+            col = "#3FD68C" if (r.get("chg1d") or 0) >= 0 else "#FF6B6B"
             mv.append(_row(r["name"][:12],
                            f"{jp_pct(r.get('chg1d'), r.get('unit'))}"
                            f"　{r['z1d']:+.1f}σ", col))

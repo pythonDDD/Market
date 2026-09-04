@@ -152,13 +152,15 @@ function render(D) {
   if (D.mode === 'mock') {
     $('banner').className = 'banner stale';
     $('banner').textContent = 'これは架空データによる表示です。実際の市場価格ではありません。';
-  } else if (ageMin > 90) {
+  } else if (ageMin > 150) {
     /* しきい値は実測に合わせてある。GitHubの定期実行は混雑時に大量に間引かれ、
-       15分ごとに設定していても実際は1〜2時間空くことがある（実測で確認済み）。
-       30分や60分で警告を出すと、平常時にも鳴り続けて警告の意味を失う。 */
+       15分ごとに設定していても実際は1〜2時間空いた（実測で確認済み）。
+       そのため予約は毎時1回に落としてある。
+       しきい値150分は「2回続けて落ちたら知らせる」という意味。
+       これより短いと平常時にも鳴り続け、警告の意味を失う。 */
     $('banner').className = 'banner stale';
     $('banner').textContent = `データが ${ageMin} 分前のものです。`
-      + `更新はGitHubの空き具合しだいで、1時間以上空くことがあります。`
+      + `更新は毎時1回の予定ですが、GitHubの空き具合しだいで飛ぶことがあります。`
       + `半日以上動いていなければ、更新処理が止まっています。`;
   } else if (stale > 0) {
     $('banner').className = 'banner stale';
@@ -166,10 +168,10 @@ function render(D) {
       + h.stale.map(s => s.key).join(', ');
   }
   $('stamp').innerHTML =
-    `<span><span class="dot${ageMin > 90 ? ' warn' : ''}"></span>最終更新 <b>${gen.toLocaleString('ja-JP')}</b>（${ageMin}分前）</span>`
+    `<span><span class="dot${ageMin > 150 ? ' warn' : ''}"></span>最終更新 <b>${gen.toLocaleString('ja-JP')}</b>（${ageMin}分前）</span>`
     + `<span>取得 <b>${h.ok || 0}/${h.total || 0} 銘柄</b></span>`
     + `<span>処理 <b>${D.build_seconds || '—'}秒</b></span>`
-    + `<span>更新間隔 <b>15分</b></span>`;
+    + `<span>更新の予定 <b>毎時1回</b></span>`;
 
   drawScan(D);
   drawRisk(D);

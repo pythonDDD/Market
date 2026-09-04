@@ -278,15 +278,18 @@ function drawDecomp(D) {
   const ex = Math.abs(d.explained), id = Math.abs(d.idiosyncratic), tot = ex + id || 1;
   // 説明分と固有分は「役割」で色を分ける。符号で決めると、固有分がマイナスのとき
   // 説明分と同系色になって見分けがつかなくなる（実際にそうなっていた）。
+  /* 2本とも符号で色を分ける。片方だけ水色だと、プラスなのかマイナスなのかが読めない。
+     区別は凡例の文字と、帯の濃さ（説明できる分は淡く）で付ける。 */
   const cIdio = d.idiosyncratic >= 0 ? 'var(--up)' : 'var(--down)';
+  const cExp  = d.explained     >= 0 ? 'var(--up)' : 'var(--down)';
   $('decompBox').innerHTML =
     `<p style="margin:0;font-size:13.5px;color:var(--muted)">${d.date} のビットコイン
       <b class="${CLS(d.btc)}" style="font-size:19px">${SGN(d.btc)}</b></p>
      <div class="decomp">
-       <div style="width:${(ex / tot * 100).toFixed(1)}%;background:var(--sky)">${SGN(d.explained)}</div>
+       <div style="width:${(ex / tot * 100).toFixed(1)}%;background:${cExp};opacity:.55">${SGN(d.explained)}</div>
        <div style="width:${(id / tot * 100).toFixed(1)}%;background:${cIdio}">${SGN(d.idiosyncratic)}</div>
      </div>
-     <div class="dlg"><span><i style="background:var(--sky)"></i>株式で説明できる分</span>
+     <div class="dlg"><span><i style="background:${cExp};opacity:.55"></i>株式で説明できる分</span>
        <span><i style="background:${cIdio}"></i>ビットコイン固有の動き</span></div>
      <div class="formula">
        <div class="fml-eq">BTC<sub>日次</sub> = α + β × SPX<sub>日次</sub> + 誤差</div>
@@ -461,7 +464,10 @@ const DOW = ['月', '火', '水', '木', '金', '土', '日'];
 const MON = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 function heatColor(v, scale) {
   const t = Math.max(-1, Math.min(1, v / scale));
-  return t >= 0 ? `rgba(255,122,110,${(0.15 + t * .55).toFixed(2)})` : `rgba(90,180,232,${(0.15 - t * .55).toFixed(2)})`;
+  /* プラスは緑（--up 63,214,140）、マイナスは赤（--down 255,107,107）。
+     サイト全体の配色と揃えてある。 */
+  return t >= 0 ? `rgba(63,214,140,${(0.15 + t * .55).toFixed(2)})`
+                : `rgba(255,107,107,${(0.15 - t * .55).toFixed(2)})`;
 }
 function drawCalendar(D) {
   const C = D.calendar || {};

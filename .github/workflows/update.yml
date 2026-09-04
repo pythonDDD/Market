@@ -30,6 +30,10 @@ on:
         description: "LINEにテスト送信して設定を確かめる（本処理はしない）"
         type: boolean
         default: false
+      full:
+        description: "履歴を取り直す（銘柄を増減したら1回これを実行する）"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -84,11 +88,18 @@ jobs:
           python scripts/daily.py --selftest
           python scripts/notify.py --selftest
 
+      # 通常は --auto（履歴が新しければ現値だけ取り直す live モード）。
+      # 銘柄を増やしても、live モードは履歴キャッシュに無い銘柄を拾えない。
+      # 銘柄表を変えたら、必ず一度 full で回して履歴を取り直すこと。
       - name: データ取得と分析
-        if: ${{ ! inputs.line_test }}
+        if: ${{ ! inputs.line_test && ! inputs.full }}
         run: |
           python scripts/build.py --auto \
             --seed-url https://pythonddd.github.io/Market/data/history.json
+
+      - name: データ取得と分析（履歴を取り直す）
+        if: ${{ inputs.full }}
+        run: python scripts/build.py --full
 
       # docs をまるごと配信し直すため、引き継がないと
       # 保存状態も昨日の画像も毎回消える。

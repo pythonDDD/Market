@@ -185,6 +185,7 @@ function render(D) {
   drawMatrix(D);
   drawFx(D);
   drawCrypto(D);
+  drawFunding(D);
   drawTables(D);
   drawLog(D);
 }
@@ -639,6 +640,83 @@ function drawFx(D) {
         <td class="px ${CLS(r.ytd_usd)}" style="padding:9px 12px">${SGN(r.ytd_usd)}</td>
         <td class="px ${CLS(gap)}" style="padding:9px 20px">${SGN(gap)}</td></tr>`;
     }).join('') + '</table>';
+}
+
+/* ---------- 資金調達レートと価格 ----------
+   CryptoQuant の見せ方に倣い、棒＝日次の資金調達レート（年率）、
+   折れ線＝ビットコイン価格。左右で軸が違うことを凡例と目盛りで示す。   */
+function drawFunding(D) {
+  const svg = $('fundChart');
+  if (!svg) return;
+  const fh = ((D.extra || {}).funding_history) || [];
+  const btc = (D.summary || []).find(r => r.key === 'BTC');
+  const closes = (btc && btc.spark) || [];
+  if (fh.length < 5) {
+    svg.innerHTML = '';
+    empty('fundChart', '資金調達レートの履歴を取得できませんでした');
+    $('fundNote').textContent =
+      'Hyperliquid から履歴が取れなかった回です。次の実行で再取得します。';
+    return;
+  }
+  const W = 900, H = 300, L = 62, R = 66, T = 18, B = 30;
+  const iw = W - L - R, ih = H - T - B;
+  const days = fh.slice(-90);
+  const vals = days.map(d => d[1]);
+  const lim = Math.max(1e-6, Math.max(...vals.map(Math.abs))) * 1.15;
+  const zeroY = T + ih / 2;
+  const yF = v => zeroY - (v / lim) * (ih / 2);
+  const bw = Math.max(1.5, iw / days.length * 0.72);
+
+  let g = '';
+  /* 目盛り（左：資金調達レート 年率%） */
+  [-lim, -lim / 2, 0, lim / 2, lim].forEach(v => {
+    const y = yF(v);
+    g += `<line x1="${L}" y1="${y.toFixed(1)}" x2="${L + iw}" y2="${y.toFixed(1)}"
+      stroke="${v === 0 ? '#3B5262' : '#22323D'}" stroke-width="1"
+      ${v === 0 ? '' : 'stroke-dasharray="3 4"'}/>
+      <text x="${L - 8}" y="${(y + 4).toFixed(1)}" fill="#8CA3B2" font-size="11"
+      text-anchor="end">${v >= 0 ? '+' : ''}${v.toFixed(1)}%</text>`;
+  });
+  /* 棒＝資金調達レート */
+  days.forEach((d, i) => {
+    const x = L + iw * (i + 0.5) / days.length - bw / 2;
+    const y = yF(Math.max(0, d[1])), h = Math.abs(yF(d[1]) - zeroY);
+    g += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}"
+      height="${Math.max(0.8, h).toFixed(1)}"
+      fill="${d[1] >= 0 ? 'var(--up)' : 'var(--down)'}" opacity="0.85"/>`;
+  });
+  /* 折れ線＝価格。本数が違うので、右端をそろえて重ねる */
+  const n = Math.min(days.length, closes.length);
+  if (n >= 5) {
+    const px = closes.slice(-n);
+    const lo = Math.min(...px), hi = Math.max(...px), sp = (hi - lo) || 1;
+    const yP = v => T + ih - ((v - lo) / sp) * ih * 0.92 - ih * 0.04;
+    const pts = px.map((v, i) =>
+      `${(L + iw * (days.length - n + i + 0.5) / days.length).toFixed(1)},${yP(v).toFixed(1)}`);
+    g += `<polyline points="${pts.join(' ')}" fill="none" stroke="var(--ink)"
+      stroke-width="1.8" stroke-linejoin="round"/>`;
+    [hi, lo].forEach(v => {
+      g += `<text x="${L + iw + 8}" y="${(yP(v) + 4).toFixed(1)}" fill="#8CA3B2"
+        font-size="11">${Math.round(v).toLocaleString()}</text>`;
+    });
+  }
+  /* 日付 */
+  [0, Math.floor(days.length / 2), days.length - 1].forEach(i => {
+    const x = L + iw * (i + 0.5) / days.length;
+    g += `<text x="${x.toFixed(1)}" y="${H - 8}" fill="#8CA3B2" font-size="11"
+      text-anchor="middle">${days[i][0].slice(5)}</text>`;
+  });
+  svg.innerHTML = g;
+
+  const last = days[days.length - 1];
+  const pos = days.filter(d => d[1] > 0).length;
+  $('fundNote').innerHTML =
+    `直近 ${days.length} 日の日次資金調達レート（年率換算）と、ビットコイン価格。`
+    + `最新は <b>${last[0]}</b> の <b>${last[1] >= 0 ? '+' : ''}${last[1].toFixed(1)}%</b>。`
+    + `この期間の <b>${Math.round(pos / days.length * 100)}%</b> の日がプラス、`
+    + `つまりロング側が資金を払っていました。`
+    + `<br>棒は左の軸（年率%）、線は右の軸（ドル）です。`
+    + `Hyperliquid 1取引所の値であり、市場全体の総意ではありません。`;
 }
 
 /* ---------- 暗号資産の温度 ---------- */

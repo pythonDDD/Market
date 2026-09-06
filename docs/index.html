@@ -154,6 +154,16 @@
   <div class="sec"><h2>暗号資産の温度</h2>
     <p>資金調達レートと建玉は Hyperliquid の実測値です。</p></div>
   <div class="grid4" id="cryptoTiles"></div>
+
+  <div class="card" style="margin-top:20px">
+    <div class="dlg" style="margin-bottom:6px">
+      <span><i style="background:var(--up)"></i>資金調達レート プラス（ロングが払う）</span>
+      <span><i style="background:var(--down)"></i>マイナス（ショートが払う）</span>
+      <span><i style="background:var(--ink)"></i>ビットコイン価格</span>
+    </div>
+    <svg id="fundChart" viewBox="0 0 900 300"></svg>
+    <p class="note" id="fundNote"></p>
+  </div>
 </section>
 
 <section id="list">

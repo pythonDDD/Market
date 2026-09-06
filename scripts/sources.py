@@ -297,6 +297,61 @@ def coingecko_prices(ids: list[str]) -> dict | None:
         return None
 
 
+def hyperliquid_funding_history(coin: str = "BTC", days: int = 90) -> list | None:
+    """資金調達レートの履歴を日次にまとめて返す。[[日付, 年率%], ...]
+
+    仕様（公式ドキュメントで確認、2026-09-06）:
+      POST https://api.hyperliquid.xyz/info
+      {"type":"fundingHistory","coin":"BTC","startTime":ミリ秒,"endTime":ミリ秒}
+      戻りは [{coin, fundingRate（文字列）, premium, time（ミリ秒）}, ...]
+      **1回の応答は最大500件。** 決済は1時間ごとなので、500件≒20.8日ぶん。
+      そのため startTime をずらしながら複数回に分けて取る。
+
+    日次への畳み込み:
+      その日の1時間値をすべて足したものが、その日の資金調達レート。
+      年率は 日次 × 365。1時間値を 24×365 する式と同じ意味になる。
+    """
+    end_ms = int(time.time() * 1000)
+    start_ms = end_ms - days * 86400 * 1000
+    rows: list = []
+    seen: set = set()
+    cur = start_ms
+    for _ in range(8):                      # 500件×8 ≒ 166日ぶんまで
+        r = http("https://api.hyperliquid.xyz/info", "POST",
+                 json.dumps({"type": "fundingHistory", "coin": coin,
+                             "startTime": cur, "endTime": end_ms}).encode(),
+                 {"Content-Type": "application/json"})
+        if r is None or r[0] != 200:
+            break
+        try:
+            batch = json.loads(r[1])
+        except Exception:  # noqa: BLE001
+            break
+        if not isinstance(batch, list) or not batch:
+            break
+        new = 0
+        for e in batch:
+            t = int(e["time"])
+            if t in seen:
+                continue
+            seen.add(t)
+            rows.append((t, float(e["fundingRate"])))
+            new += 1
+        if new == 0:
+            break
+        nxt = max(t for t, _ in rows) + 1
+        if nxt <= cur or nxt >= end_ms:
+            break
+        cur = nxt
+    if not rows:
+        return None
+    daily: dict = {}
+    for t, v in rows:
+        d = datetime.fromtimestamp(t / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+        daily[d] = daily.get(d, 0.0) + v
+    return [[d, round(daily[d] * 365 * 100, 4)] for d in sorted(daily)]
+
+
 def hyperliquid() -> dict | None:
     """資金調達レートと建玉。fundingは1時間あたりの値であることに注意。"""
     r = http("https://api.hyperliquid.xyz/info", "POST",

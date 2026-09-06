@@ -513,6 +513,13 @@ def run(mode: str) -> int:
     extra = {"crypto_global": S.coingecko_global(),
              "hyperliquid": S.hyperliquid(),
              "fear_greed": S.fear_greed()}
+    # 資金調達レートの推移。取れなくても他は動くよう、失敗は None のまま通す。
+    fh = S.hyperliquid_funding_history("BTC", 90)
+    extra["funding_history"] = fh
+    if fh:
+        S.log(f"  資金調達レートの履歴 {len(fh)}日ぶんを取得しました。")
+    else:
+        S.log("  資金調達レートの履歴は取得できませんでした。")
 
     ok = sum(1 for h in health if h["ok"])
     stale = [h for h in health if not h["ok"]]
@@ -586,7 +593,7 @@ def run_mock() -> int:
     payload = {"generated_at": datetime.now(timezone.utc).isoformat(), "mode": "mock",
                "health": {"ok": len(closes), "total": len(closes), "stale": [],
                           "sources": {}, "log": ["架空データ"]},
-               "live": {}, "extra": {"crypto_global": None, "hyperliquid": None,
+               "live": {}, "extra": {"crypto_global": None, "hyperliquid": None, "funding_history": None,
                                      "fear_greed": None}, **an}
     write_json(LATEST, payload)
     size = os.path.getsize(LATEST) / 1024

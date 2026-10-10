@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "notifications": {
+    "daily_enabled": true,
+    "daily_hour_jst": 9,
+    "alerts_enabled": true,
+    "z_threshold": 2.5,
+    "corr_z_threshold": 2.0,
+    "risk_threshold": 60,
+    "cooldown_minutes": 90,
+    "monthly_cap": 190,
+    "alert_cap": 120,
+    "max_data_age_minutes": 180
+  }
+}

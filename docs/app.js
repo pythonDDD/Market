@@ -2,14 +2,13 @@
    データが無い項目は「データなし」と表示して隠さない。
    欠けているのに埋まっているように見えるのが一番危ないため。 */
 
-/* グラフの中で使う色。CSSではなくここに置いているのは、SVGを文字列で組み立てているため。
-   テーマを変えるときはこの1箇所を直せばよい。 */
+/* SVG also uses the active CSS theme: no pale dark-theme labels on light cards. */
 const C = {
-  grid: '#22323D', axis: '#3B5262', text: '#8CA3B2', ink: '#E4EFF2',
-  sky: '#84D2F5', aqua: '#B0F1F0', cyan: '#00B4D8', navy: '#5E8FB5',
-  up: '#3FD68C', down: '#FF6B6B', alert: '#FFEB3B',
-  band10: '#1B3A46', band25: '#2B6E8C', line: '#B0F1F0',
-  histIn: '#3E7E9E', histOut: '#22323D',
+  grid:'var(--grid)',axis:'var(--axis)',text:'var(--muted)',ink:'var(--ink)',
+  sky:'var(--sky)',aqua:'var(--aqua)',cyan:'var(--cyan)',navy:'var(--chart-blue)',
+  up:'var(--up)',down:'var(--down)',alert:'var(--alert)',
+  band10:'var(--band-outer)',band25:'var(--band-inner)',line:'var(--chart-b)',
+  histIn:'var(--hist-in)',histOut:'var(--hist-out)',
 };
 
 const $ = id => document.getElementById(id);
@@ -26,7 +25,7 @@ function attachHover(svgId, meta) {
   box.style.position = 'relative';
 
   const cross = document.createElementNS(NS, 'line');
-  cross.setAttribute('stroke', '#8CA3B2');
+  cross.setAttribute('stroke', 'var(--muted)');
   cross.setAttribute('stroke-width', '1');
   cross.setAttribute('stroke-dasharray', '3 3');
   cross.setAttribute('y1', meta.top); cross.setAttribute('y2', meta.bottom);
@@ -36,7 +35,7 @@ function attachHover(svgId, meta) {
   const dots = meta.series.map(sr => {
     const c = document.createElementNS(NS, 'circle');
     c.setAttribute('r', '4'); c.setAttribute('fill', sr.color);
-    c.setAttribute('stroke', '#0E161C'); c.setAttribute('stroke-width', '1.5');
+    c.setAttribute('stroke', 'var(--surface)'); c.setAttribute('stroke-width', '1.5');
     c.style.display = 'none'; el.appendChild(c); return c;
   });
 
@@ -87,40 +86,48 @@ const SGN = (v, n = 2, suf = '%') => {
   return sign + F(Math.abs(v), n) + suf;
 };
 const CLS = v => v > 0 ? 'up' : v < 0 ? 'down' : 'flat';
-const T = (x, y, t, o = {}) => `<text x="${x}" y="${y}" font-size="${o.s || 11}" fill="${o.c || C.text}"
-  text-anchor="${o.a || 'middle'}" font-weight="${o.w || 400}" font-family="Zen Kaku Gothic New,sans-serif">${t}</text>`;
+const T = (x, y, t, o = {}) => `<text x="${x}" y="${y}" font-size="${o.s || 13}" fill="${o.c || C.text}"
+  text-anchor="${o.a || 'middle'}" font-weight="${o.w || 600}" style="font-family:var(--sans)">${t}</text>`;
 const POLY = (p, c, w) => `<polyline points="${p}" fill="none" stroke="${c}" stroke-width="${w}"
   stroke-linecap="round" stroke-linejoin="round"/>`;
 const svg = (id, s) => { const e = $(id); if (e) e.innerHTML = s; };
 const empty = (id, msg) => svg(id, `<text x="50%" y="50%" text-anchor="middle" font-size="13"
-  fill="${C.text}" font-family="Zen Kaku Gothic New,sans-serif">${msg}</text>`);
+  fill="${C.text}" style="font-family:var(--sans)">${msg}</text>`);
 
-/* 相関の色。−1 は濃紺、0 は生成り、+1 は水色。配色カードのグラデーションに対応。 */
+/* A soft surface carries the magnitude; the number always uses readable text. */
 function corrColor(v) {
-  // −1 は落ち着いた青、0 は背景に近い暗色、+1 は青緑。暗地でも順序が読めるようにしている。
-  const stops = [[-1, [70, 110, 145]], [0, [30, 46, 57]], [1, [0, 180, 216]]];
-  let a = stops[0], b = stops[1];
-  if (v > 0) { a = stops[1]; b = stops[2]; }
-  const t = (v - a[0]) / (b[0] - a[0]);
-  return `rgb(${a[1].map((x, i) => Math.round(x + (b[1][i] - x) * t)).join(',')})`;
+  const amount = Math.round(Math.min(1, Math.abs(v)) * 30);
+  const accent = v < 0 ? 'var(--chart-a)' : 'var(--chart-b)';
+  return `color-mix(in srgb, ${accent} ${amount}%, var(--surface))`;
 }
 
 /* ========================================================================== */
+let loadingData = false;
 async function main() {
-  let D;
+  if (loadingData) return;
+  loadingData = true;
+  $('refreshBtn').disabled = true;
   try {
-    const r = await fetch('data/latest.json?t=' + Date.now());
+    const r = await fetch('data/latest.json?t=' + Date.now(), {signal: AbortSignal.timeout(20000)});
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    D = await r.json();
+    const D = await r.json();
+    if (!Array.isArray(D.summary) || !D.summary.length) throw new Error('市場データが空です');
+    if (window.marketData?.generated_at !== D.generated_at) { HIST = null; HIST_ERR = null; }
+    $('app').style.display = '';
+    $('loading').style.display = 'none';
+    render(D);
+    window.marketData = D;
+    window.dispatchEvent(new CustomEvent('market:data', {detail:D}));
+    return true;
   } catch (e) {
+    $('loading').style.display = 'none';
     $('banner').className = 'banner error';
-    $('banner').textContent = 'データを読み込めませんでした（' + e.message + '）。更新処理が失敗しているか、まだ一度も実行されていません。';
-    $('app').innerHTML = '<div class="loading">データがありません。</div>';
-    return;
+    $('banner').textContent = 'データを読み込めませんでした（' + e.message + '）。上の再読込ボタンで再試行できます。初回はActionsのサイト更新を実行してください。';
+    return false;
+  } finally {
+    loadingData = false;
+    $('refreshBtn').disabled = false;
   }
-  $('app').style.display = '';
-  $('loading').style.display = 'none';
-  render(D);
 }
 
 /* パーセンタイルが何を意味するかを日本語で言い換える。
@@ -143,6 +150,8 @@ function PCT_MEAN(p) {
 }
 
 function render(D) {
+  $('banner').className = 'banner';
+  $('banner').textContent = '';
   const gen = new Date(D.generated_at);
   const ageMin = Math.round((Date.now() - gen.getTime()) / 60000);
   const h = D.health || {};
@@ -152,6 +161,9 @@ function render(D) {
   if (D.mode === 'mock') {
     $('banner').className = 'banner stale';
     $('banner').textContent = 'これは架空データによる表示です。実際の市場価格ではありません。';
+  } else if (D.mode === 'snapshot') {
+    $('banner').className = 'banner stale';
+    $('banner').textContent = '保存時点の実データで見るプレビューです。自動更新・LINE送信は行いません。データ基準: '+gen.toLocaleString('ja-JP',{timeZone:'Asia/Tokyo'})+' JST';
   } else if (ageMin > 150) {
     /* しきい値は実測に合わせてある。GitHubの定期実行は混雑時に大量に間引かれ、
        15分ごとに設定していても実際は1〜2時間空いた（実測で確認済み）。
@@ -168,7 +180,7 @@ function render(D) {
       + h.stale.map(s => s.key).join(', ');
   }
   $('stamp').innerHTML =
-    `<span><span class="dot${ageMin > 150 ? ' warn' : ''}"></span>最終更新 <b>${gen.toLocaleString('ja-JP')}</b>（${ageMin}分前）</span>`
+    `<span><span class="dot${ageMin > 150 ? ' warn' : ''}"></span>最終更新 <b>${gen.toLocaleString('ja-JP', {timeZone:'Asia/Tokyo'})+' JST'}</b>（${ageMin}分前）</span>`
     + `<span>取得 <b>${h.ok || 0}/${h.total || 0} 銘柄</b></span>`
     + `<span>処理 <b>${D.build_seconds || '—'}秒</b></span>`
     + `<span>更新の予定 <b>毎時1回</b></span>`;
@@ -212,7 +224,7 @@ function drawScan(D) {
   $('scanLead').textContent = `いま最も普段と違うのは ${top.label} です。`;
   $('scanSub').textContent =
     `過去1年の分布と比べて ${Math.abs(top.z).toFixed(1)}σ 離れています。`
-    + `±2σ を超える動きは、通常なら20営業日に1度程度しか起きません。`;
+    + `±2σは正規分布なら約4.6%の範囲外ですが、実際の市場の頻度はこの通りとは限りません。`;
   // 値動きと関係の変化はスケールが違うので、混ぜずに分けて並べる
   $('scanRows').innerHTML =
     (s.length ? `<p class="subhead">値動きの異常</p>${scanRows(s, 4)}` : '')
@@ -289,10 +301,10 @@ function drawDecomp(D) {
     `<p style="margin:0;font-size:13.5px;color:var(--muted)">${d.date} のビットコイン
       <b class="${CLS(d.btc)}" style="font-size:19px">${SGN(d.btc)}</b></p>
      <div class="decomp">
-       <div style="width:${(ex / tot * 100).toFixed(1)}%;background:${cExp};opacity:.55">${SGN(d.explained)}</div>
+       <div style="width:${(ex / tot * 100).toFixed(1)}%;background:${cExp}">${SGN(d.explained)}</div>
        <div style="width:${(id / tot * 100).toFixed(1)}%;background:${cIdio}">${SGN(d.idiosyncratic)}</div>
      </div>
-     <div class="dlg"><span><i style="background:${cExp};opacity:.55"></i>株式で説明できる分</span>
+     <div class="dlg"><span><i style="background:${cExp}"></i>株式で説明できる分</span>
        <span><i style="background:${cIdio}"></i>ビットコイン固有の動き</span></div>
      <div class="formula">
        <div class="fml-eq">BTC<sub>日次</sub> = α + β × SPX<sub>日次</sub> + 誤差</div>
@@ -466,11 +478,8 @@ function drawLag(D) {
 const DOW = ['月', '火', '水', '木', '金', '土', '日'];
 const MON = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 function heatColor(v, scale) {
-  const t = Math.max(-1, Math.min(1, v / scale));
-  /* プラスは緑（--up 63,214,140）、マイナスは赤（--down 255,107,107）。
-     サイト全体の配色と揃えてある。 */
-  return t >= 0 ? `rgba(63,214,140,${(0.15 + t * .55).toFixed(2)})`
-                : `rgba(255,107,107,${(0.15 - t * .55).toFixed(2)})`;
+  const amount = Math.round(8 + Math.min(1, Math.abs(v / scale)) * 20);
+  return `color-mix(in srgb, ${v >= 0 ? 'var(--up)' : 'var(--down)'} ${amount}%, var(--surface))`;
 }
 function drawCalendar(D) {
   const C = D.calendar || {};
@@ -580,7 +589,7 @@ function drawAnalog(D) {
   // 縦軸が何を表しているかを図の中に書く。相関ではなく価格の累積リターン。
   g += `<text x="14" y="${p.t + ih / 2}" font-size="11" fill="${C.text}"
     transform="rotate(-90 14 ${p.t + ih / 2})" text-anchor="middle"
-    font-family="Zen Kaku Gothic New,sans-serif">ビットコインの累積リターン</text>`;
+    style="font-family:var(--sans)">ビットコインの累積リターン</text>`;
   g += band(b['10'], b['90'], C.band10) + band(b['25'], b['75'], C.band25);
   g += POLY(b['50'].map((v, i) => `${x(i)},${y(v)}`).join(' '), C.line, 2.6);
   [b['90'], b['50'], b['10']].forEach(arr =>
@@ -588,7 +597,7 @@ function drawAnalog(D) {
   // 何のリターンかを縦軸に書く。これが無いと数字が何を指すのか分からない。
   g += `<text x="14" y="${p.t + ih / 2}" font-size="11" fill="${C.text}"
     transform="rotate(-90 14 ${p.t + ih / 2})" text-anchor="middle"
-    font-family="Zen Kaku Gothic New,sans-serif">ビットコインの累積リターン</text>`;
+    style="font-family:var(--sans)">ビットコインの累積リターン</text>`;
   svg('fan', g);
   attachHover('fan', {
     vbW: W, x0: p.l, x1: W - p.r, n: N, top: p.t, bottom: p.t + ih,
@@ -618,7 +627,7 @@ function drawMatrix(D) {
     h += `<tr><th class="row">${M.names[i]}</th>` + row.map(v => {
       if (v === null) return '<td><div class="cell" style="background:var(--surface2);color:var(--muted)">—</div></td>';
       const strong = Math.abs(v) > .6;
-      return `<td><div class="cell" style="background:${corrColor(v)};color:${strong ? '#0E161C' : C.ink};padding:9px 4px">${v.toFixed(2)}</div></td>`;
+      return `<td><div class="cell" style="background:${corrColor(v)};color:${C.ink};padding:9px 4px">${v.toFixed(2)}</div></td>`;
     }).join('') + '</tr>';
   });
   $('mtx').innerHTML = h;
@@ -674,7 +683,7 @@ function drawFunding(D) {
     g += `<line x1="${L}" y1="${y.toFixed(1)}" x2="${L + iw}" y2="${y.toFixed(1)}"
       stroke="${v === 0 ? '#3B5262' : '#22323D'}" stroke-width="1"
       ${v === 0 ? '' : 'stroke-dasharray="3 4"'}/>
-      <text x="${L - 8}" y="${(y + 4).toFixed(1)}" fill="#8CA3B2" font-size="11"
+      <text x="${L - 8}" y="${(y + 4).toFixed(1)}" fill="var(--muted)" font-size="11"
       text-anchor="end">${v >= 0 ? '+' : ''}${v.toFixed(1)}%</text>`;
   });
   /* 棒＝資金調達レート */
@@ -696,14 +705,14 @@ function drawFunding(D) {
     g += `<polyline points="${pts.join(' ')}" fill="none" stroke="var(--ink)"
       stroke-width="1.8" stroke-linejoin="round"/>`;
     [hi, lo].forEach(v => {
-      g += `<text x="${L + iw + 8}" y="${(yP(v) + 4).toFixed(1)}" fill="#8CA3B2"
+      g += `<text x="${L + iw + 8}" y="${(yP(v) + 4).toFixed(1)}" fill="var(--muted)"
         font-size="11">${Math.round(v).toLocaleString()}</text>`;
     });
   }
   /* 日付 */
   [0, Math.floor(days.length / 2), days.length - 1].forEach(i => {
     const x = L + iw * (i + 0.5) / days.length;
-    g += `<text x="${x.toFixed(1)}" y="${H - 8}" fill="#8CA3B2" font-size="11"
+    g += `<text x="${x.toFixed(1)}" y="${H - 8}" fill="var(--muted)" font-size="11"
       text-anchor="middle">${days[i][0].slice(5)}</text>`;
   });
   svg.innerHTML = g;
@@ -743,6 +752,7 @@ function drawCrypto(D) {
 const CATS = ['米国株', 'アジア株', '欧州株', '先物', '商品', '為替', '金利', '暗号資産'];
 let SUMMARY = {};
 function drawTables(D) {
+  SUMMARY = {};
   const S = D.summary || [];
   const live = D.live || {};
   S.forEach(r => SUMMARY[r.key] = r);
@@ -780,17 +790,25 @@ function spark(a) {
 /* ---------- 拡大表示（ローソク足） ----------
    四本値は latest.json ではなく history.json に入れている。
    毎回読むには重いので、最初にクリックされたときだけ取りに行って覚えておく。 */
-let HIST = null, HIST_ERR = null, MODAL_KEY = null, MODAL_RANGE = 120;
+let HIST = null, HIST_ERR = null, HIST_PENDING = null, MODAL_KEY = null, MODAL_RANGE = 120;
+let MODAL_FOCUS = null;
 async function loadHistory() {
-  if (HIST || HIST_ERR) return HIST;
-  try {
-    const r = await fetch('data/history.json?t=' + Date.now());
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    HIST = await r.json();
-  } catch (e) { HIST_ERR = e.message; }
-  return HIST;
+  if (HIST) return HIST;
+  if (HIST_PENDING) return HIST_PENDING;
+  HIST_ERR = null;
+  HIST_PENDING = (async () => {
+    try {
+      const r = await fetch('data/history.json?t=' + Date.now(), {signal:AbortSignal.timeout(20000)});
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      HIST = await r.json();
+    } catch (e) { HIST_ERR = e.message; }
+    finally { HIST_PENDING = null; }
+    return HIST;
+  })();
+  return HIST_PENDING;
 }
 async function openChart(key) {
+  MODAL_FOCUS = document.activeElement;
   MODAL_KEY = key; MODAL_RANGE = 120;
   const m = $('modal'), row = SUMMARY[key] || {};
   m.hidden = false; document.body.style.overflow = 'hidden';
@@ -803,17 +821,19 @@ async function openChart(key) {
   $('modalLink').innerHTML = url
     ? `<a href="${url}" target="_blank" rel="noopener">Yahoo Finance で見る（${row.code}）↗</a>`
     : '';
+  $('modalClose').focus();
   await loadHistory();
-  renderModal();
+  if (!$('modal').hidden) renderModal();
 }
 function closeChart() {
   $('modal').hidden = true; document.body.style.overflow = '';
   if (TIPHOST) TIPHOST.remove(), TIPHOST = null;
+  MODAL_FOCUS?.focus();
 }
 let TIPHOST = null;
 function renderModal() {
   const key = MODAL_KEY, row = SUMMARY[key] || {};
-  if (!HIST || !HIST.ohlc || !HIST.ohlc[key]) {
+  if (!HIST || !HIST.ohlc || !HIST.ohlc[key] || !Object.keys(HIST.ohlc[key]).length) {
     $('modalBody').innerHTML = `<p class="note">この銘柄の四本値がありません。
       ${HIST_ERR ? '履歴ファイルを読めませんでした（' + HIST_ERR + '）。' :
         '取得元が四本値を返していない可能性があります。'}</p>`;
@@ -853,10 +873,10 @@ function renderModal() {
      + T(W - p.r, H - 10, use[use.length - 1], { s: 10, a: 'end' });
 
   const first = o[0][3], last = o[o.length - 1][3];
-  const chg = (last / first - 1) * 100;
+  const chg = row.unit === 'rate' ? last - first : (last / first - 1) * 100;
   $('modalSub').innerHTML =
     `${use[0]} 〜 ${use[use.length - 1]}（${use.length}本）　
-     期間騰落 <b class="${CLS(chg)}">${SGN(chg)}</b>　
+     期間騰落 <b class="${CLS(chg)}">${SGN(chg, 2, row.unit === 'rate' ? 'pt' : '%')}</b>　
      高値 ${F(hi, dg)}　安値 ${F(lo, dg)}`;
   $('modalBody').innerHTML =
     `<div class="ranges">${[[60, '3か月'], [120, '6か月'], [250, '1年'], [9999, '全期間']]
@@ -892,4 +912,11 @@ $('modalClose').addEventListener('click', closeChart);
 $('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeChart(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('modal').hidden) closeChart(); });
 
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Tab' || $('modal').hidden) return;
+  const focusable = [...$('modal').querySelectorAll('button,a[href]')];
+  const first = focusable[0], last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) {e.preventDefault(); last.focus();}
+  if (!e.shiftKey && document.activeElement === last) {e.preventDefault(); first.focus();}
+});
 main();

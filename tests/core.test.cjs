@@ -1,0 +1,15 @@
+const test=require('node:test'),assert=require('node:assert/strict'),C=require('../docs/core.js');
+const rows=[{key:'BTC',name:'ビットコイン',cat:'暗号資産',unit:'price',chg1d:3,z1d:-2},{key:'SPX',name:'S&P500',cat:'米国株',unit:'index',chg1d:-1,z1d:1},{key:'US10Y',name:'米10年',cat:'金利',unit:'rate',chg1d:4,z1d:.5},{key:'X',name:'欠損',cat:'米国株',chg1d:null,z1d:null}];
+test('Search matches symbol case-insensitively',()=>assert.equal(C.filterMarkets(rows,'btc')[0].key,'BTC'));
+test('Category intersects search',()=>assert.equal(C.filterMarkets(rows,'','米国株').length,2));
+test('Ranking keeps null last and rates separate',()=>assert.deepEqual(C.filterMarkets(rows,'','all','gain').map(r=>r.key),['BTC','SPX','X','US10Y']));
+test('Z ranking uses absolute magnitude',()=>assert.equal(C.filterMarkets(rows,'','all','z')[0].key,'BTC'));
+test('Common-date comparison does not fill missing observations',()=>{const v=C.compare({'2026-01-01':100,'2026-01-02':101,'2026-01-03':110},{'2026-01-01':20,'2026-01-03':18},30);assert.deepEqual(v.dates,['2026-01-01','2026-01-03']);assert.ok(Math.abs(v.a[1]-110)<1e-9);assert.equal(v.b[1],90)});
+test('Single point does not create fake chart',()=>assert.equal(C.compare({'2026-01-01':1},{'2026-01-01':2},30).dates.length,0));
+test('Zero-price series rejected',()=>assert.equal(C.compare({'2026-01-01':0},{'2026-01-01':2},30).dates.length,0));
+test('Alert equality is inclusive and missing values cannot trigger',()=>{assert.ok(C.hit({direction:'above',target:10},10));assert.ok(C.hit({direction:'below',target:10},9));assert.equal(C.hit({direction:'above',target:10},null),false)});
+test('Old and demo data do not trigger alerts',()=>{const now=Date.now();assert.equal(C.fresh({generated_at:new Date(now-151*60000).toISOString()},now),false);assert.equal(C.fresh({mode:'mock',generated_at:new Date(now).toISOString()},now),false)});
+test('Backup rejects bad input',()=>assert.throws(()=>C.backup({version:1})));
+test('Backup rejects malformed alerts',()=>assert.throws(()=>C.backup({version:2,favorites:[],notes:[],alerts:[{id:'x',key:'BTC',target:null,direction:'above'}]})));
+test('Backup normalizes and limits imported fields',()=>{const d=C.backup({version:2,favorites:['BTC','BTC','<script>'],alerts:[],notes:[],autoRefresh:true});assert.deepEqual(d.favorites,['BTC'])});
+test('CSV escapes formulas and delimiters without changing negative numbers',()=>{const s=C.csv([{key:'BTC',name:'=1+1',cat:'a,b',chg1d:-1}]);assert.ok(s.includes('"\'=1+1"'));assert.ok(s.includes('"a,b"'));assert.ok(s.includes(',-1,'))});

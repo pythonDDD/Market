@@ -1,153 +1,110 @@
 name: サイト更新
-
-# 15分ごとに実行し、GitHub Pages へ直接配信する。
-# データをリポジトリにコミットしないので、履歴が膨らまない。
-#
-# 実行は毎時1回。朝の便りに関わる時間帯だけ、予約を余分に置いてある。
-#
-# 朝の便り（LINE）もこのワークフローに相乗りしている。
-#   8:40以降の実行 → 画像を描いて docs/data に置く（この回の配信で公開される）
-#   9:00以降の実行 → 公開されたURLを確かめてから送る
-# 専用のワークフローを別に立てると「送った」という記録を配信物に残せず、
-# 翌日以降の重複判定が効かないため、あえて相乗りにしている。
 on:
-  # push を入れてあるのは2つの理由から。
-  #  1) 変更するたびに必ず1回動くので、壊れていればすぐ分かる
-  #  2) 既定ブランチへのコミットは、GitHub側で予約の再登録を促す。
-  #     予約が一度も動かないときの公式の対処がこれ。
   push:
     branches: [main]
-
   schedule:
-    # 丸い分（00/15/30/45）は世界中の予約が集中して間引かれやすいので、
-    # わざと半端な分にずらしてある。
-    #
-    # 2026-09-04 に 15分ごと（毎時4回）から毎時1回へ落とした。
-    # 実測で8時間に6回しか通っておらず、平均80分間隔だったため、
-    # 「頼んでも通らない回数を頼み続けている」状態だったという読みによる。
-    # これが効いたかどうかは、24時間の実行回数で判定すること。
-    - cron: "23 * * * *"
-    - cron: "47 23 * * *"      # 08:47 JST — 画像を描く回
-    - cron: "53 23 * * *"      # 08:53 JST — 予備
-    - cron: "6 0 * * *"        # 09:06 JST — 送る回
-    - cron: "11 0 * * *"       # 09:11 JST — 予備
+    - cron: '23 * * * *'
+    - cron: '6,36 0 * * *' # JST 09:06 / 09:36。遅れたら毎時実行で補完。
   workflow_dispatch:
     inputs:
       line_test:
-        description: "LINEにテスト送信して設定を確かめる（本処理はしない）"
+        description: '設定済みのLINE宛先へテストを1通送る'
+        type: boolean
+        default: false
+      line_check:
+        description: 'LINEの認証・残り枠だけ確認する（送信しない）'
         type: boolean
         default: false
       full:
-        description: "履歴を取り直す（銘柄を増減したら1回これを実行する）"
+        description: '日足履歴を取得し直す'
         type: boolean
         default: false
-
 permissions:
-  contents: read
+  contents: write # market-stateに通知状態だけ保存。mainは変更しない。
   pages: write
   id-token: write
-
-# 同時に走らないようにする。走行中のものは待たせる（打ち切らない）。
 concurrency:
-  group: pages
+  group: market-update
   cancel-in-progress: false
-
 jobs:
-  build:
+  update:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      SITE_URL: https://pythonddd.github.io/Market
+      PYTHONUNBUFFERED: '1'
     steps:
-      # 版番号について:
-      # 2026-09-03 に v6 / v5 系へ上げたところ、以降の実行が止まった。
-      # 存在しないタグを指定した可能性が高いため、実際に緑で通っていた
-      # この組み合わせに戻してある。Node 20 の警告は出るが動く。
-      # 上げ直すときは 1つずつ変えて、どれが原因か分かるようにすること。
       - uses: actions/checkout@v4
-
-      # 何がきっかけで動いたのかをログの先頭に残す。
-      # 「予約が動いていない」を確かめるには、これが一番早い。
-      - name: きっかけ
-        run: |
-          echo "event    : ${{ github.event_name }}"
-          echo "時刻(UTC) : $(date -u '+%Y-%m-%d %H:%M:%S')"
-          echo "時刻(JST) : $(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M:%S')"
-
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-
-      # 手動実行で「LINEテスト」に印を付けたときだけ、1通送って終わる。
-      - name: LINEのテスト送信
-        if: ${{ inputs.line_test }}
-        env:
-          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
-          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
-        run: python scripts/daily.py --test
-
-      # 計算が壊れていたら、そもそも配信しない
-      - name: セルフテスト
-        if: ${{ ! inputs.line_test }}
+          python-version: '3.12'
+      - name: 計算・通知の回帰テスト（送信しない）
         run: |
+          python -m unittest discover -s tests -v
           python scripts/build.py --selftest
           python scripts/chart.py --selftest
           python scripts/daily.py --selftest
-          python scripts/notify.py --selftest
-
-      # 通常は --auto（履歴が新しければ現値だけ取り直す live モード）。
-      # 銘柄を増やしても、live モードは履歴キャッシュに無い銘柄を拾えない。
-      # 銘柄表を変えたら、必ず一度 full で回して履歴を取り直すこと。
-      - name: データ取得と分析
-        if: ${{ ! inputs.line_test && ! inputs.full }}
-        run: |
-          python scripts/build.py --auto \
-            --seed-url https://pythonddd.github.io/Market/data/history.json
-
-      - name: データ取得と分析（履歴を取り直す）
-        if: ${{ inputs.full }}
-        run: python scripts/build.py --full
-
-      # docs をまるごと配信し直すため、引き継がないと
-      # 保存状態も昨日の画像も毎回消える。
-      - name: 前回の配信物を引き継ぐ
-        if: ${{ ! inputs.line_test }}
-        run: python scripts/daily.py --carry
+      - name: フロントエンドの計算テスト
+        run: node --test tests/core.test.cjs
+      - name: 市場データを取得
+        id: data
         continue-on-error: true
-
-      - name: 出力の確認
-        if: ${{ ! inputs.line_test }}
-        run: |
-          ls -la docs/data/
-          python -c "import json;d=json.load(open('docs/data/latest.json',encoding='utf-8'));print('取得', d['health']['ok'], '/', d['health']['total'], '銘柄');print('生成', d['generated_at'])"
-
-      # 朝の便り。時刻を見て「描く／送る／何もしない」を自分で決める。
-      # Secrets が未設定なら送信せずログに出すだけで、失敗にはしない。
-      - name: 朝の便り
-        if: ${{ ! inputs.line_test }}
         env:
-          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
-          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
-        run: python scripts/daily.py --tick
+          FULL_REFRESH: ${{ inputs.full }}
+        run: |
+          if [ "$FULL_REFRESH" = "true" ]; then
+            python scripts/build.py --full --seed-url "$SITE_URL/data/history.json"
+          else
+            python scripts/build.py --auto --seed-url "$SITE_URL/data/history.json"
+          fi
+      - name: 通知状態を引き継ぐ（送信しない）
+        id: ledger
         continue-on-error: true
-
-      # 異常が出たときだけ飛ぶ通知。配信の前に置く。
-      - name: 通知の判定
-        if: ${{ ! inputs.line_test }}
         env:
-          LINE_TOKEN: ${{ secrets.LINE_TOKEN }}
-          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
-        run: python scripts/notify.py
-        continue-on-error: true
-
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/state_store.py
+      - name: LINE通知と診断
+        id: line
+        if: steps.ledger.outcome == 'success'
+        continue-on-error: true # サイトは配信し、最後のステップで失敗を明示。
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          LINE_TOKEN: ${{ secrets.LINE_TOKEN || secrets.LINE_CHANNEL_TOKEN || secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID || secrets.LINE_TO }}
+          LINE_ENABLED: ${{ vars.LINE_ENABLED || 'true' }}
+          LINE_DAILY_HOUR: ${{ vars.LINE_DAILY_HOUR || '9' }}
+          TEST_LINE: ${{ inputs.line_test }}
+          CHECK_LINE: ${{ inputs.line_check }}
+        run: |
+          if [ "$TEST_LINE" = "true" ]; then
+            python scripts/notification.py --test
+          elif [ "$CHECK_LINE" = "true" ]; then
+            python scripts/notification.py --check
+          else
+            python scripts/notification.py
+          fi
       - uses: actions/configure-pages@v5
-        if: ${{ ! inputs.line_test }}
-
+        if: steps.data.outcome == 'success' && steps.ledger.outcome == 'success'
       - uses: actions/upload-pages-artifact@v3
-        if: ${{ ! inputs.line_test }}
+        if: steps.data.outcome == 'success' && steps.ledger.outcome == 'success'
         with:
           path: docs
-
-      - id: deployment
-        if: ${{ ! inputs.line_test }}
-        uses: actions/deploy-pages@v4
+      - uses: actions/deploy-pages@v4
+        id: deployment
+        if: steps.data.outcome == 'success' && steps.ledger.outcome == 'success'
+      - name: 診断ファイルを保存
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: market-diagnostics-${{ github.run_id }}
+          path: docs/data/line_status.json
+          retention-days: 14
+          if-no-files-found: ignore
+      - name: 失敗を成功表示にしない
+        if: always() && (steps.line.outcome == 'failure' || steps.data.outcome == 'failure' || steps.ledger.outcome == 'failure')
+        run: |
+          echo '::error::データ取得またはLINE通知に失敗しました。通知ログ・Summary・診断ファイルを確認してください。'
+          exit 1

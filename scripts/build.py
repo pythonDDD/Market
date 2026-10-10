@@ -29,6 +29,7 @@ import os
 import random
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -74,14 +75,16 @@ def rnd(v, n=4):
 # ==========================================================================
 # 取得
 # ==========================================================================
-def fetch_history(prev: dict | None) -> tuple[dict, list[dict]]:
+def fetch_history(prev: dict | None) -> tuple[dict, dict, list[dict]]:
     """43銘柄＋暗号資産3種の日足を取り直す。取れなかったものは前回値を残す。"""
     prev_c = (prev or {}).get("closes", {})
     prev_o = (prev or {}).get("ohlc", {})
     closes, ohlc, health = {}, {}, []
 
-    for key, name, code, cat, unit, cur, major in S.SYMBOLS:
-        d = S.yahoo_history(code)
+    # Bounded concurrency: lower wall time without unbounded API fan-out.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(lambda spec: S.yahoo_history(spec[2]), S.SYMBOLS))
+    for (key, name, code, cat, unit, cur, major), d in zip(S.SYMBOLS, results):
         if d and d["closes"]:
             closes[key] = d["closes"]
             ohlc[key] = d.get("ohlc", {})
@@ -95,7 +98,6 @@ def fetch_history(prev: dict | None) -> tuple[dict, list[dict]]:
         else:
             health.append({"key": key, "ok": False, "src": "なし",
                            "note": "取得失敗・前回値も無し"})
-        time.sleep(0.25)
 
     for key, cb, kr, _cg in CRYPTO:
         d = S.coinbase_daily(cb, want_ohlc=True)
@@ -105,7 +107,7 @@ def fetch_history(prev: dict | None) -> tuple[dict, list[dict]]:
         else:
             d, src = S.kraken_daily(kr), "kraken(控え)"
             if d:
-                closes[key], ohlc[key] = d, {}
+                closes[key], ohlc[key] = d["closes"], d.get("ohlc", {})
         if d:
             health.append({"key": key, "ok": True, "src": src, "last": max(closes[key])})
         elif key in prev_c:
@@ -142,6 +144,16 @@ def fetch_live() -> dict:
 # ==========================================================================
 # 分析
 # ==========================================================================
+def period_change(series: dict, periods: int, unit: str = "price"):
+    ks = sorted(series)
+    if len(ks) <= periods:
+        return None
+    first, last = series[ks[-periods - 1]], series[ks[-1]]
+    if unit == "rate":
+        return last - first
+    return (last / first - 1) * 100 if first else None
+
+
 def build_analytics(closes: dict[str, dict]) -> dict:
     out: dict = {}
 
@@ -163,8 +175,10 @@ def build_analytics(closes: dict[str, dict]) -> dict:
         if not s or len(s) < 30:
             continue
         ks = sorted(s)
-        r = sorted(rets[key].values(), key=lambda _: 0) and [rets[key][k] for k in sorted(rets[key])]
-        ytd_base = next((s[k] for k in ks if k >= f"{ks[-1][:4]}-01-01"), None)
+        r = [rets[key][k] for k in sorted(rets[key])]
+        year_start = f"{ks[-1][:4]}-01-01"
+        prior_year = [k for k in ks if k < year_start]
+        ytd_base = s[prior_year[-1]] if prior_year else None
         dd = A.max_drawdown(s)
         summary.append({
             "key": key, "name": name, "cat": cat, "unit": unit, "cur": cur, "major": major,
@@ -172,8 +186,8 @@ def build_analytics(closes: dict[str, dict]) -> dict:
             "yahoo": code or None,
             "last": rnd(s[ks[-1]], 4), "last_date": ks[-1],
             "chg1d": rnd(r[-1], 3) if r else None,
-            "chg5d": rnd(sum(r[-5:]), 3) if len(r) >= 5 else None,
-            "chg20d": rnd(sum(r[-20:]), 3) if len(r) >= 20 else None,
+            "chg5d": rnd(period_change(s, 5, unit), 3),
+            "chg20d": rnd(period_change(s, 20, unit), 3),
             "ytd": rnd((s[ks[-1]] / ytd_base - 1) * 100, 2) if ytd_base and unit != "rate"
                    else (rnd(s[ks[-1]] - ytd_base, 3) if ytd_base else None),
             "z1d": rnd(A.zscore(r), 2),
@@ -424,13 +438,14 @@ def fx_adjusted(closes):
         # 円建て系列とドル建て系列を作る
         jpy = [v if native == "JPY" else v * f for v, f in zip(sv, fx)]
         usd = [v / f if native == "JPY" else v for v, f in zip(sv, fx)]
-        y0 = next((i for i, k in enumerate(ks) if k >= f"{ks[-1][:4]}-01-01"), 0)
+        prior = [i for i, k in enumerate(ks) if k < f"{ks[-1][:4]}-01-01"]
+        y0 = prior[-1] if prior else None
         # 1年前の位置。データが252営業日に満たない銘柄では先頭を使う
-        i1 = -252 if len(ks) >= 252 else 0
+        i1 = max(0, len(ks) - 253)
         out.append({"key": key, "name": label,
-                    "ytd_jpy": rnd((jpy[-1] / jpy[y0] - 1) * 100, 2),
-                    "ytd_usd": rnd((usd[-1] / usd[y0] - 1) * 100, 2),
-                    "y1_days": len(ks) - (len(ks) + i1 if i1 < 0 else 0) if i1 < 0 else len(ks),
+                    "ytd_jpy": rnd((jpy[-1] / jpy[y0] - 1) * 100, 2) if y0 is not None else None,
+                    "ytd_usd": rnd((usd[-1] / usd[y0] - 1) * 100, 2) if y0 is not None else None,
+                    "y1_days": len(ks) - 1 - i1,
                     "y1_jpy": rnd((jpy[-1] / jpy[i1] - 1) * 100, 2),
                     "y1_usd": rnd((usd[-1] / usd[i1] - 1) * 100, 2)})
     return out
@@ -470,14 +485,14 @@ def decide_mode(prev_hist: dict | None, max_age_min: int = 60) -> str:
     日足は1日1回しか変わらないが、途中で日付をまたぐので1時間ごとに取り直す。
     15分ごとの更新は現値だけで足りる。
     """
-    if not prev_hist or not prev_hist.get("generated_at"):
+    if not prev_hist or not prev_hist.get("generated_at") or prev_hist.get("schema_version") != 2:
         return "full"
     try:
         t = datetime.fromisoformat(prev_hist["generated_at"])
         age = (datetime.now(timezone.utc) - t).total_seconds() / 60
     except Exception:  # noqa: BLE001
         return "full"
-    return "live" if age < max_age_min else "full"
+    return "live" if 0 <= age < max_age_min else "full"
 
 
 def run(mode: str) -> int:
@@ -495,12 +510,15 @@ def run(mode: str) -> int:
         S.log("履歴を取得します（43銘柄＋暗号資産3種）...")
         closes, ohlc, health = fetch_history(prev_hist)
         # 四本値は history.json に同梱する。app.js もそこから読んでいる。
-        write_json(HISTORY, {"generated_at": datetime.now(timezone.utc).isoformat(),
-                             "closes": closes, "ohlc": ohlc})
+        if not any(h["ok"] for h in health):
+            S.log("全取得先で失敗。履歴と公開サイトを維持します。")
+            return 1
+        write_json(HISTORY, {"schema_version": 2, "generated_at": datetime.now(timezone.utc).isoformat(),
+                             "closes": closes, "ohlc": ohlc, "health": health})
     else:
         closes = prev_hist["closes"]
-        health = [{"key": k, "ok": True, "src": "キャッシュ", "last": max(v)}
-                  for k, v in closes.items() if v]
+        health = prev_hist.get("health") or [{"key": k, "ok": False, "src": "旧キャッシュ・取得状況未確認", "last": max(v)}
+                  for k, v in closes.items() if v and k != "COPPER_GOLD"]
         S.log(f"履歴キャッシュを再利用します（{len(closes)}銘柄）")
 
     S.log("現値を取得します...")
@@ -529,9 +547,13 @@ def run(mode: str) -> int:
         "build_seconds": round(time.time() - t0, 1),
         "health": {"ok": ok, "total": len(health), "stale": stale,
                    "sources": {k: (v is not None) for k, v in extra.items()},
+                   "live_ok": len(live), "live_total": len(S.SYMBOLS) + len(CRYPTO),
+                   "live_missing": [k for k in [s[0] for s in S.SYMBOLS] + [c[0] for c in CRYPTO] if k not in live],
                    "log": S.LOG[-40:]},
         "live": live,
         "extra": extra,
+        "schema_version": 2,
+        "history_generated_at": (read_json(HISTORY) or {}).get("generated_at"),
         **an,
     }
     # 取得が全滅したときは前回の内容を残す。空のサイトを出すよりましなため。
@@ -689,9 +711,9 @@ def selftest() -> int:
     now = datetime.now(timezone.utc)
     ck("履歴が無ければfull", decide_mode(None) == "full")
     ck("履歴が新しければlive",
-       decide_mode({"generated_at": now.isoformat()}) == "live")
+       decide_mode({"schema_version": 2, "generated_at": now.isoformat()}) == "live")
     ck("履歴が2時間前ならfull",
-       decide_mode({"generated_at": (now - timedelta(hours=2)).isoformat()}) == "full")
+       decide_mode({"schema_version": 2, "generated_at": (now - timedelta(hours=2)).isoformat()}) == "full")
     ck("生成時刻が壊れていればfull", decide_mode({"generated_at": "こわれた値"}) == "full")
 
     # JSONとして書き出せるか（NaNやInfが混じっていないか）

@@ -24,6 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 TIMEOUT = 25
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -52,7 +53,11 @@ def http(url: str, method: str = "GET", body: bytes | None = None,
                                         context=ssl.create_default_context()) as r:
                 return r.getcode(), r.read()
         except urllib.error.HTTPError as e:
-            return e.code, e.read()
+            raw = e.read()
+            if e.code >= 500 and attempt < retries:
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            return e.code, raw
         except Exception as e:  # noqa: BLE001
             if attempt == retries:
                 log(f"  通信失敗 {url[:70]} : {type(e).__name__}")
@@ -161,11 +166,20 @@ def yahoo_history(code: str, rng: str = "2y") -> dict | None:
         cl, op = q.get("close") or [], q.get("open") or []
         hi, lo = q.get("high") or [], q.get("low") or []
         closes, ohlc = {}, {}
+        try:
+            exchange_tz = ZoneInfo(meta.get("exchangeTimezoneName") or "UTC")
+        except ZoneInfoNotFoundError:
+            exchange_tz = timezone.utc
+        current = datetime.now(exchange_tz)
+        session_end = ((meta.get("currentTradingPeriod") or {}).get("regular") or {}).get("end")
         for i, t in enumerate(ts):
             c = cl[i] if i < len(cl) else None
             if c is None:
                 continue
-            d = datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%d")
+            d = datetime.fromtimestamp(t, exchange_tz).strftime("%Y-%m-%d")
+            # Do not label the in-progress daily bar a completed close.
+            if d >= current.date().isoformat() and (not session_end or time.time() < session_end + 900):
+                continue
             closes[d] = float(c)
             o = op[i] if i < len(op) and op[i] is not None else c
             h = hi[i] if i < len(hi) and hi[i] is not None else max(o, c)
@@ -215,16 +229,20 @@ def yahoo_spark(codes: list[str]) -> dict:
 # ==========================================================================
 # 暗号資産
 # ==========================================================================
-def coinbase_daily(product: str, days: int = 300, want_ohlc: bool = False) -> dict | None:
+def coinbase_daily(product: str, days: int = 730, want_ohlc: bool = False) -> dict | None:
     """Coinbaseの日足。1リクエスト最大300本なので、それ以上は複数回に分ける。
 
     want_ohlc=True のときは終値だけでなく四本値を返す（ローソク足の描画用）。
     """
     out, ohlc = {}, {}
-    end = int(time.time())
-    for _ in range(3):
-        url = (f"https://api.exchange.coinbase.com/products/{product}/candles"
-               f"?granularity=86400&end={end}")
+    end = int(time.time()) // 86400 * 86400 - 1
+    cutoff = end - days * 86400 + 1
+    for _ in range((days + 299) // 300):
+        start = max(cutoff, end - 300 * 86400 + 1)
+        query = urllib.parse.urlencode({"granularity": 86400,
+            "start": datetime.fromtimestamp(start, timezone.utc).isoformat(),
+            "end": datetime.fromtimestamp(end, timezone.utc).isoformat()})
+        url = f"https://api.exchange.coinbase.com/products/{product}/candles?{query}"
         r = http(url)
         if r is None or r[0] != 200:
             break
@@ -237,10 +255,12 @@ def coinbase_daily(product: str, days: int = 300, want_ohlc: bool = False) -> di
         for row in rows:
             # Coinbaseの並びは [時刻, 安値, 高値, 始値, 終値, 出来高]
             d = datetime.fromtimestamp(row[0], timezone.utc).strftime("%Y-%m-%d")
+            if row[0] < start or row[0] > end or row[0] + 86400 > time.time():
+                continue
             out[d] = float(row[4])
             ohlc[d] = [round(float(row[3]), 4), round(float(row[2]), 4),
                        round(float(row[1]), 4), round(float(row[4]), 4)]
-        end = min(int(row[0]) for row in rows) - 86400
+        end = start - 1
         time.sleep(0.35)
         if len(out) >= days:
             break
@@ -263,7 +283,7 @@ def kraken_daily(pair: str) -> dict | None:
             return None
         k = [x for x in j["result"] if x != "last"][0]
         closes, ohlc = {}, {}
-        for row in j["result"][k]:
+        for row in j["result"][k][:-1]:
             d = datetime.fromtimestamp(row[0], timezone.utc).strftime("%Y-%m-%d")
             closes[d] = float(row[4])          # [時刻, 始値, 高値, 安値, 終値, ...]
             ohlc[d] = [float(row[1]), float(row[2]), float(row[3]), float(row[4])]

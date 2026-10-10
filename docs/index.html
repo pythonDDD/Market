@@ -1,36 +1,44 @@
-<!DOCTYPE html>
-<html lang="ja">
+<!doctype html>
+<html lang="ja" data-theme="light">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>潮目 — 市場の連動と、その崩れ</title>
-<meta name="description" content="世界の株式・為替・商品・金利・暗号資産を横断して、いつもと違う動きを自動で見つけます。">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="alternate icon" href="favicon.png" sizes="32x32" type="image/png">
-  <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <meta name="theme-color" content="#0E161C">
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-
-<div id="banner" class="banner"></div>
-
-<div class="wrap">
-
-<header>
-  <h1 class="brand">潮目</h1>
-  <p class="tagline">46の市場を1時間ごとにスキャンして、いつもと違うものだけを上に出します。</p>
-  <div class="stamp" id="stamp"></div>
-</header>
-
-<div id="loading" class="loading">データを読み込んでいます…</div>
-
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>潮目 — 世界のマーケットを、やさしく深く。</title>
+<meta name="description" content="世界の株式・為替・商品・暗号資産を見渡す潮目。お気に入り、市場比較、異常スキャン、LINE通知診断をひとつに。">
+<meta name="theme-color" content="#e5e2dc"><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="style.css?v=2.1"><link rel="stylesheet" href="dashboard.css?v=2.1">
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('shiome.theme')||'light'}catch(e){}</script>
+</head><body>
+<a class="skip-link" href="#mainContent">本文へスキップ</a>
+<aside class="sidebar">
+<a class="brand-lockup" href="#overview" aria-label="潮目 ホーム"><span class="brand-mark">≋</span><span>潮目<small>SHIOME / MARKET JOURNAL</small></span></a>
+<p class="nav-label">YOUR LITTLE MARKET ROOM</p>
+<nav class="main-nav" aria-label="メインメニュー">
+<button data-page="overview" class="active"><span aria-hidden="true">◫</span> ダッシュボード</button>
+<button data-page="markets"><span aria-hidden="true">▥</span> マーケット <b id="marketCount">—</b></button>
+<button data-page="watchlist"><span aria-hidden="true">☆</span> お気に入り</button>
+<button data-page="analytics"><span aria-hidden="true">⌁</span> じっくり分析</button>
+<button data-page="alerts"><span aria-hidden="true">♧</span> アラート・LINE <i id="lineDot"></i></button>
+<button data-page="notebook"><span aria-hidden="true">▤</span> マーケットノート</button>
+</nav>
+<div class="side-bottom"><div class="side-tip"><span>🐚 しおちゃんのひとこと</span><p id="sideTip">相場にも、潮の満ち引き。<br>数字の向こうを、のぞいてみよう。</p></div>
+<button class="quiet" id="settingsBtn">⚙ 表示・データ設定</button><a class="quiet" href="https://github.com/pythonDDD/Market/actions" target="_blank" rel="noopener">更新履歴を確認 ↗</a><p class="side-version">SHIOME 2.1 · MADE FOR CURIOSITY</p></div>
+</aside>
+<div class="workspace"><header class="topbar"><div><span class="breadcrumb">MY MARKET ROOM</span><h1 id="pageTitle">ダッシュボード</h1></div><div class="top-actions"><span id="todayLabel" class="today-label"></span><button class="icon-btn" id="quickSettingsBtn" aria-label="表示・データ設定" title="設定">⚙</button><button class="icon-btn" id="themeBtn" aria-label="ダークモードに切り替える" title="テーマ切替">☾</button><button class="refresh-btn" id="refreshBtn">↻ <span>データ再読込</span></button></div></header>
+<main id="mainContent" tabindex="-1"><div id="banner" class="banner" role="status"></div><div id="loading" class="loading">🐚 市場のようすを読み込んでいます…</div>
 <div id="app" style="display:none">
-
-<nav class="jump">
+<div class="page-view" id="page-overview">
+<section class="welcome"><div><div class="eyebrow">A LITTLE CLARITY, EVERY DAY.</div><h2>世界の動きに、<br class="mobile-br">そっと耳をすませて。</h2><p>株も、為替も、ビットコインも。<br>今日の市場の「いつもと違う」を、いっしょに見つけよう。</p><span class="hero-tag" id="heroTag">日足データから市場を観察</span></div><svg viewBox="0 0 240 210" class="mascot" role="img" aria-label="しおちゃん、潮目の小さな案内役"><ellipse cx="125" cy="185" rx="78" ry="12" fill="#d6cdef"/><path d="M53 98Q41 37 68 40L94 59Q132 40 167 59L193 40Q218 43 207 104Q220 165 180 182Q120 202 63 176Q32 151 53 98" fill="#fffefb" stroke="#8e7eaf" stroke-width="3"/><path d="M64 78L67 52L85 69M173 69L194 51L197 80" fill="#eadff7"/><ellipse cx="86" cy="111" rx="10" ry="6" fill="#f6cad6"/><ellipse cx="169" cy="111" rx="10" ry="6" fill="#f6cad6"/><circle cx="97" cy="100" r="4.5" fill="#645375"/><circle cx="159" cy="100" r="4.5" fill="#645375"/><path d="M123 105Q128 112 134 105M128 110V115M117 115Q121 123 128 116Q135 123 141 115" fill="none" stroke="#645375" stroke-width="2.6" stroke-linecap="round"/><rect x="85" y="133" width="90" height="52" rx="9" fill="#d9eee6" stroke="#8abaad" stroke-width="2"/><path d="M98 168L115 157L129 163L154 144M143 144H154V155" fill="none" stroke="#559c86" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><ellipse cx="77" cy="147" rx="15" ry="9" fill="#fffefb" stroke="#8e7eaf" stroke-width="2" transform="rotate(-25 77 147)"/><ellipse cx="183" cy="145" rx="15" ry="9" fill="#fffefb" stroke="#8e7eaf" stroke-width="2" transform="rotate(25 183 145)"/><path d="M25 45V59M18 52H32M218 122V134M212 128H224" stroke="#b4a0d3" stroke-width="3" stroke-linecap="round"/><circle cx="222" cy="73" r="4" fill="#ddb66f"/></svg></section>
+<div class="overview-section-label"><h2>まずは、この4つから。</h2><span>確定日足の終値 / 前日比</span></div>
+<div class="quote-grid" id="quoteCards"></div>
+<div class="dashboard-grid"><section class="card comparison-panel"><div class="panel-heading"><div><span class="eyebrow">THE BIG PICTURE</span><h2>同じスタートで、比べてみよう。</h2></div><span class="badge">起点 = 100</span></div><div class="compare-controls"><label class="sr-only" for="compareA">比較する市場1</label><select id="compareA"></select><span>と</span><label class="sr-only" for="compareB">比較する市場2</label><select id="compareB"></select><div class="segment" id="comparePeriods"><button data-days="30">1か月</button><button data-days="90" class="selected">3か月</button><button data-days="365">1年</button></div></div><div id="compareLegend" class="chart-legend"></div><div class="chart-scroll" tabindex="0" role="region" aria-label="横にスクロールできるグラフ"><svg id="compareChart" viewBox="0 0 760 260" role="img" aria-label="共通日付で起点を100に揃えた価格推移"></svg></div><p id="compareNote" class="note">履歴は必要になったときに読み込みます。</p></section>
+<section class="card pulse-panel"><span class="eyebrow">MARKET MOOD</span><h2>いまの市場の気分</h2><div id="moodRing" class="mood-ring"><div><span id="moodEmoji">◌</span><strong id="moodScore">—</strong><small>リスク選好</small></div></div><h3 id="moodLabel">データを確認中</h3><p id="moodText"></p><div class="mood-scale"><span>慎重</span><span>中立</span><span>積極的</span></div><button class="text-button" data-goto="analytics" data-anchor="risk">内訳を見てみる →</button></section></div>
+<div class="dashboard-grid lower-grid"><section class="card heatmap-panel"><div class="panel-heading"><div><span class="eyebrow">MARKET MAP</span><h2>ひと目でわかる、市場の温度。</h2></div><button class="text-button" data-goto="markets">すべて見る ↗</button></div><div class="heatmap" id="marketHeatmap"></div><p class="note">確定日足の前日比。緑は上昇、ピンクは下落。金利は変化幅（pt）。</p></section>
+<section class="card findings-panel"><div class="panel-heading"><div><span class="eyebrow">LITTLE DISCOVERIES</span><h2>今日の気づき</h2></div><span class="badge lavender">SCAN</span></div><div id="insightList"></div><button class="text-button" data-goto="analytics" data-anchor="scan">スキャンの詳細へ →</button></section></div>
+<section class="card favorite-preview"><div class="panel-heading"><h2>気になる市場を、そばに。</h2><button class="text-button" data-goto="watchlist">お気に入りへ →</button></div><div id="favoritePreview" class="mini-quotes"></div></section>
+</div>
+<div class="page-view" id="page-markets" hidden><section class="page-intro"><span class="eyebrow">EXPLORE THE MARKETS</span><h2>今日、どこが動いた？</h2><p>気になる市場を検索。☆で保存、銘柄名からローソク足へ。</p></section><div class="market-toolbar"><label class="search-box"><span aria-hidden="true">⌕</span><input type="search" id="marketSearch" placeholder="銘柄名・コードで探す" aria-label="市場を検索"></label><label>並び順 <select id="marketSort"><option value="default">標準</option><option value="gain">上昇率順</option><option value="loss">下落率順</option><option value="z">変化の大きさ（|z|）</option><option value="name">名前順</option></select></label><button class="secondary" id="exportCsv">CSVで保存 ↓</button></div><div class="filter-chips" id="categoryFilters"></div><p id="marketResults" class="note" aria-live="polite"></p><div id="marketTable" class="card table-wrap"></div></div>
+<div class="page-view" id="page-watchlist" hidden><section class="page-intro"><span class="eyebrow">YOUR FAVORITES</span><h2>お気に入りの市場たち。</h2><p>このブラウザに保存されます。マーケットの☆で自由に追加・削除できます。</p></section><div id="watchlistCards" class="watch-grid"></div></div>
+<div class="page-view" id="page-analytics" hidden><section class="page-intro"><span class="eyebrow">GO A LITTLE DEEPER</span><h2>数字の奥まで、ゆっくり。</h2><p>相関、分布、季節性。ひとつの指標だけに頼らず、市場を多面的に眺めます。</p></section><nav class="jump">
   <a href="#scan">今日の異常</a><a href="#risk">リスク選好</a><a href="#decomp">BTCの分解</a>
   <a href="#corr">連動の推移</a><a href="#breaks">相関の壊れ度</a><a href="#lag">リード・ラグ</a>
   <a href="#cal">曜日と月</a><a href="#dist">分布の中の位置</a><a href="#analog">似た局面のその後</a>
@@ -85,7 +93,7 @@
   <div class="sec"><h2>連動の推移</h2><p>30日ローリング相関。日次リターンで計算しています。</p></div>
   <div class="card">
     <div class="dlg" id="corrLegend" style="margin-bottom:14px"></div>
-    <svg id="corrChart" viewBox="0 0 900 300" role="img" aria-label="ローリング相関の推移"></svg>
+    <div class="chart-scroll" tabindex="0" role="region" aria-label="横にスクロールできるグラフ"><svg id="corrChart" viewBox="0 0 900 300" role="img" aria-label="ローリング相関の推移"></svg></div>
     <p class="note" id="corrNote"></p>
   </div>
 </section>
@@ -128,7 +136,7 @@
       過去の全事例から集計したものです。散らばっているのは相関ではなく価格です。</p></div>
   <div class="card">
     <div id="analogText"></div>
-    <svg id="fan" viewBox="0 0 900 300" role="img" aria-label="似た局面のその後の分布"></svg>
+    <div class="chart-scroll" tabindex="0" role="region" aria-label="横にスクロールできるグラフ"><svg id="fan" viewBox="0 0 900 300" role="img" aria-label="似た局面のその後の分布"></svg></div>
     <div class="dlg" style="margin-top:14px">
       <span><i style="background:#527695"></i>中央値</span>
       <span><i style="background:#84D2F5"></i>25〜75パーセンタイル</span>
@@ -161,7 +169,7 @@
       <span><i style="background:var(--down)"></i>マイナス（ショートが払う）</span>
       <span><i style="background:var(--ink)"></i>ビットコイン価格</span>
     </div>
-    <svg id="fundChart" viewBox="0 0 900 300"></svg>
+    <div class="chart-scroll" tabindex="0" role="region" aria-label="横にスクロールできるグラフ"><svg id="fundChart" viewBox="0 0 900 300"></svg></div>
     <p class="note" id="fundNote"></p>
   </div>
 </section>
@@ -173,18 +181,12 @@
   <div class="grid2" id="tables"></div>
 </section>
 
-<footer>
-  <p>公開データをまとめて表示しているだけのサイトです。投資助言ではありません。
-     売買の判断に使う場合は、必ず一次情報を確認してください。</p>
-  <p>取得に失敗した項目は前回値のまま残り、画面上部に警告が出ます。
-     警告が出ていない状態でも、確定した日足は前営業日のものである点にご注意ください。</p>
-  <div id="logBox"></div>
-</footer>
-
-
 </div>
-</div>
-
+<div class="page-view" id="page-alerts" hidden><section class="page-intro"><span class="eyebrow">KEEP AN EYE ON IT</span><h2>見逃したくない変化に、しるしを。</h2><p>LINEの実行状況と、このブラウザ専用の価格アラートを確認できます。</p></section><section class="card line-panel"><div class="panel-heading"><div class="line-lockup"><span class="line-logo">LINE</span><div><h2>市場だより・異常スキャン</h2><p class="note">毎日9時以降の最初の実行で配信 / 日本時間</p></div></div><span class="badge" id="lineStatusBadge">診断未取得</span></div><div id="lineStatusBody"></div><div class="line-actions"><a class="primary" href="https://github.com/pythonDDD/Market/actions/workflows/update.yml" target="_blank" rel="noopener">Actionsで診断・テスト ↗</a><button class="secondary" id="reloadLine">診断結果を再読込</button></div><details class="setup-guide"><summary>通知が届かないときの確認手順</summary><ol><li>GitHub → Settings → Secrets and variables → Actions に <code>LINE_TOKEN</code> と <code>LINE_USER_ID</code> を登録。旧名も対応しています。</li><li>そのトークンのLINE公式アカウントを友だち追加し、ブロックを解除します。</li><li>Actions → サイト更新 → Run workflow → <b>line_test</b> をONにして実行します。</li><li>実行のSummaryに失敗理由が出ます。APIの受付成功だけでは端末への到着は確認できません。</li></ol></details></section>
+<section class="card"><div class="panel-heading"><div><h2>自分だけの価格アラート</h2><p class="note">この画面を開いている間、再読込された取得値で判定。LINEには送信しません。</p></div></div><form id="priceAlertForm" class="alert-form"><label>銘柄<select id="alertSymbol"></select></label><label>条件<select id="alertDirection"><option value="above">以上になったら</option><option value="below">以下になったら</option></select></label><label>価格・水準（表示通貨）<input id="alertTarget" type="number" min="0.000001" step="any" required placeholder="例：100000"></label><button type="submit" class="primary">＋ アラートを追加</button></form><div id="priceAlertList"></div></section></div>
+<div class="page-view" id="page-notebook" hidden><section class="page-intro"><span class="eyebrow">THOUGHTS WORTH KEEPING</span><h2>今日の気づきを、ひとこと。</h2><p>ノートはこのブラウザにだけ保存されます。設定からバックアップできます。</p></section><section class="card note-editor"><form id="noteForm"><label for="noteText">マーケットノート</label><textarea id="noteText" rows="4" maxlength="2000" required placeholder="今日はどんな動きが気になった？ 判断の理由、あとで確かめたいことを残そう。"></textarea><div class="editor-footer"><span>最大2,000文字</span><button type="submit" class="primary">ノートを残す ＋</button></div></form></section><div id="noteList"></div></div>
+<footer class="app-footer"><div class="stamp" id="stamp"></div><p>取得値には遅延があります。終値の基準日は銘柄ごとに異なります。分析は投資成果を保証しません。</p><details><summary>データソース・取得ログ</summary><p>Yahoo Finance / Coinbase / Kraken / CoinGecko / Hyperliquid / Alternative.me</p><div id="logBox"></div></details><span class="footer-sign">潮目 SHIOME <span>·</span> 少しわかると、世界はもっとおもしろい。</span></footer>
+</div></main></div>
 <div id="modal" class="modal" hidden>
   <div class="modal-inner" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal-head">
@@ -199,6 +201,8 @@
   </div>
 </div>
 
-<script src="app.js"></script>
-</body>
-</html>
+
+<dialog id="settingsDialog" class="settings-dialog"><form method="dialog" class="dialog-heading"><h2>あなたらしい、潮目に。</h2><button class="icon-btn" aria-label="設定を閉じる">×</button></form><p class="note">設定・お気に入り・ノート・価格アラートはこのブラウザ内に保存します。</p><label class="switch-row">5分ごとに公開データを再読込<input type="checkbox" id="autoRefresh"></label><p class="note">取得元へのリアルタイム接続ではありません。市場データ自体はActionsで更新します。</p><div class="backup-actions"><button class="primary" id="exportSettings">バックアップを書き出す</button><label class="secondary import-label">バックアップを復元<input id="importSettings" type="file" accept="application/json,.json" hidden></label></div><p id="storageNotice" class="note"></p><details class="glossary"><summary>小さな用語集</summary><dl><dt>zスコア</dt><dd>過去の平均から何標準偏差離れているか。売買シグナルそのものではありません。</dd><dt>相関</dt><dd>一緒に動く度合い。−1〜＋1。原因・結果を示すものではありません。</dd><dt>起点100</dt><dd>最初の価格を100に揃えた比較。通貨換算は行いません。</dd><dt>pt</dt><dd>金利の差。4%→4.2%は＋0.2ptです。</dd><dt>ドローダウン</dt><dd>観測期間の過去最高値からどれだけ下がったか。</dd></dl></details></dialog>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<script src="core.js?v=2.1"></script><script src="app.js?v=2.1"></script><script src="dashboard.js?v=2.1"></script>
+</body></html>

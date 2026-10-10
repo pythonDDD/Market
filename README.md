@@ -1,247 +1,153 @@
-# 潮目 — 市場の連動と、その崩れ
+# 潮目 SHIOME 2.1
 
-世界の株式・為替・商品・金利・暗号資産を横断してスキャンし、
-「いつもと違う動き」を自動で見つけて上に出すサイト。
+世界の市場を、やさしく深く。GitHub Pages + GitHub Actions の構成を維持した全面改修版です。Python 3.12（検証環境 3.12.14）、Python外部パッケージ不要。サイトのビルドにもnpmは不要です。
 
-公開URL: https://pythonddd.github.io/Market/
+**本番は `main` への更新をGitHub Actionsで検証・配信します。設定と手動診断は `導入手順.md` を参照してください。**
 
-## 構成
+## 今回の改修
 
-```
-scripts/
-  healthcheck2.py   データ源の疎通確認（設計を変えるときに再実行する）
-  sources.py        取得層。Yahoo / Coinbase / Kraken / CoinGecko / Hyperliquid など
-  analytics.py      分析ロジック。外部ライブラリなしの純Python
-  build.py          全体を束ねる。docs/data/latest.json などを作る
-  chart.py          朝の便りに添える画像を1枚描くための道具。
-                    zlibとビットマップフォントだけで作った小さな作図器
-  daily.py          毎朝9時の「朝の便り」。画像つきでLINEに送る
-  notify.py         しきい値に触れたときだけLINEに通知する
-docs/               GitHub Pages が配信するフォルダ
-  index.html        構造だけ。中身は app.js が埋める
-  app.js            描画
-  style.css
-  data/             build.py が生成（リポジトリにはコミットしない）
-    latest.json       画面が最初に読む。分析結果ぜんぶ
-    history.json      日足と四本値のキャッシュ。ローソク足もここから読む
-    daily.png         朝の便りの画像。LINEはこのURLを取りにくる
-    daily_prev.png    その縮小版（トーク画面に出るほう）
-    daily_msg.json    組み立て済みのメッセージ
-    notify_state.json 送信の記録（連投防止・月間通数・当日送信済みか）
-.github/workflows/
-  update.yml        毎時1回（＋朝の便り用に4本）実行してPagesへ配信
-  healthcheck.yml   手動実行の疎通確認
-```
+- ラベンダーとミントのUI、案内役「しおちゃん」、スマホ対応、ライト／ダーク切替。
+- ダッシュボード、マーケット、お気に入り、詳細分析、通知、ノートの6画面。
+- 主要4市場のカード、12市場のヒートマップ、市場の気分、異常スキャン。
+- 市場の検索／分類／並べ替え／CSV出力。お気に入りはブラウザ保存。
+- 共通する日付だけを使う比較チャート。起点100、1か月／3か月／1年、値のツールチップ。
+- 既存のローソク足、相関、リード・ラグ、曜日・月、分布、類似局面、円建て比較、資金調達レートを維持。
+- ブラウザ専用の価格アラート、マーケットノート、JSONバックアップ／復元。
+- LINEの認証・月間送信枠の診断と送信結果を画面とActions Summaryに表示。
 
-## 使うデータ源
+## LINEが届かなかった理由
 
-疎通確認で実際に通ったものだけを使っている。
+2026-10-10の公開状態と添付コードを確認しました。
 
-| 用途 | 取得元 | 備考 |
+1. `daily.py` は画像を作る回と送信する回が別でした。公開 `notify_state.json` の当日 `rendered_at` は **10:01:17 JST**、当日の `attempts` は0でした。後続のActions実行は11時台で、旧コードの **11:00締切** により送信対象から外れます。この日の未送信を説明できる組合せです。
+2. 旧 `update.yml` は通知ステップを `continue-on-error: true` にしており、後で失敗を確認する処理がありませんでした。送信が失敗してもワークフローは緑になります。
+3. コードが受け付ける旧Secret名を、ワークフローが環境変数に渡していませんでした。旧名だけ登録した場合は未設定扱いになります。
+
+トークン失効、実際のSecret登録内容、ブロック有無は確認していません。全期間の未送信原因を一つに断定してはいません。
+
+## 新しい通知の流れ
+
+`notification.py` が唯一の本番送信入口です。
+
+1. 設定、Bot情報、LINE側の月間送信枠を確認。
+2. `market-state` ブランチから送信済み記録を取得。初回はLINE設定の有無にかかわらず、サイト配信前に旧公開状態を移行。移行失敗時は公開状態を消さないよう配信を止めます。
+3. 日本時間9時以降、まだ当日分が未送信なら、**その実行内で本文を1通送信**。画像生成・公開待ちなし。11時の打ち切りもありません。
+4. 送信前に本文と再試行キーを保存。通信断や5xxの再試行は同じ本文・同じキーで実行。
+5. 受付成功後に送信済み記録を保存。APIが同じキーを受付済みなら、重複として扱い再送しません。
+6. 公開用 `docs/data/line_status.json` には診断コード・日時・送信数だけを書きます。トークンや宛先IDは出しません。
+7. 通知失敗でもサイトの更新を試みますが、最後にワークフローを失敗扱いにします。診断がサイトへ配信できない場合も、Actionsの成果物に残します。
+
+朝の定期便と異常通知が同時に該当したときは、1通にまとめます。異常通知の同じ条件は90分の間隔と24時間の同一条件抑制を適用します。
+
+月間上限190通・異常通知120通は**アプリ側の予算**です。LINEプランの上限ではありません。LINE側の実際の利用数・上限はAPIで取得します。グループ送信などではアプリのリクエスト数とLINEの課金通数は一致しません。
+
+**API受付はスマートフォンへの配達確認ではありません。** 友だち追加やブロック状態などにより、APIが成功しても届かないことがあります。
+
+## 設定
+
+GitHub → Settings → Secrets and variables → Actions → Secrets:
+
+| 項目 | 意味 | 互換の旧名 |
 |---|---|---|
-| 株価指数・先物・商品・為替・金利 43銘柄 | Yahoo Finance | 公式APIではない。仕様変更のリスクあり |
-| 暗号資産の日足 | Coinbase（控えに Kraken） | |
-| 時価総額・ドミナンス | CoinGecko | キー不要 |
-| 資金調達レート・建玉 | Hyperliquid | fundingは1時間あたりの値 |
-| 恐怖強欲指数 | alternative.me | |
+| `LINE_TOKEN` | Messaging API チャネルアクセストークン | `LINE_CHANNEL_TOKEN` / `LINE_CHANNEL_ACCESS_TOKEN` |
+| `LINE_USER_ID` | 自分のユーザーID。`U`で始まる33文字 | `LINE_TO` |
 
-**使わないもの（実測で落ちたため）**
+`C`で始まるグループID、`R`で始まるルームIDも形式として受け付けます。勝手に一斉配信へ切り替える処理はありません。
 
-| 取得元 | 症状 |
-|---|---|
-| Stooq | HTTP 200 を返すが中身はJavaScript検証ページ。日本・米国どちらのIPからも遮断 |
-| Binance | 米国IPから HTTP 451（地域ブロック）。Actionsのランナーは米国 |
-| Bybit | 米国IPから HTTP 403（CloudFrontの国別遮断） |
+同じ場所の **Variables** に任意で指定:
 
-## 手元での動かし方
-
-```bash
-python scripts/build.py --selftest   # ネット無しで全体を検証
-python scripts/chart.py  --selftest  # 描画部分の検証
-python scripts/daily.py  --selftest  # 朝の便りの検証
-python scripts/notify.py --selftest  # 通知の検証
-python scripts/build.py --mock       # 架空データで通し確認
-python scripts/daily.py --mock       # 架空データで朝の便りの画像を作る
-python scripts/build.py --full       # 実データを取得（履歴も）
-python -m http.server 8000 -d docs   # http://localhost:8000 で確認
-```
-
-## 設計上の注意
-
-- **確定した日足と現値は別物として扱う。** アジア市場は取得時点で取引中のことが多く、
-  最終足と現値が数％ずれる。相関の計算には確定足だけを使っている。
-- **利回りは差分、価格は変化率。** 4.50% → 4.79% を「+6.4%」と書くのは誤り。
-- **Yahooが返す通貨は当てにしない。** VIXも米国債利回りも "USD" と返ってくる。
-  単位は `sources.py` の `SYMBOLS` で持っている。
-- **取得に失敗した銘柄は前回値を残し、必ず画面に警告を出す。**
-  黙って古い値を新しい顔で出さない。
-- **予測はしない。** 「似た局面のその後」は過去の実績分布であって予測ではない。
-  該当した日数だけでなく、連続日をまとめた「独立した局面の数」も併記している。
-
-## 既知の制約
-
-- 株価指数の取得先が Yahoo 一本。代替が無いため、ここが止まるとTradFi側が止まる。
-- GitHub の定期実行は混雑時に遅れ、間引かれる。時間ちょうどに走る保証はない。
-  2026-09-04 の実測では、15分ごとに設定していても8時間で6回（平均80分間隔）しか
-  通らなかった。そのため毎時1回に落としてある。
-  また、リポジトリが60日間更新されないと定期実行は自動で止まる。
-- 曜日・月のアノマリーは、t値が2未満のセルに点線を付けているが、
-  それでも多重比較の問題は残る。売買の根拠にはしないこと。
-- **`docs/data/ohlc.json` の生成は 2026-09-03 にやめた。** `build.py` は書いていたが
-  `app.js` は一度も読んでおらず、ローソク足は `history.json` から描いていた。
-  毎回作って毎回配信するだけの死んだファイルだった。
-  引き継ぎ書には「READMEの記述が誤りで実際には作られない」とあったが、
-  実際には作られていた。誤っていたのは引き継ぎ書のほう。
-
-## 朝の便り（毎日9時のLINE）
-
-毎朝9時ごろ、その日の市況を画像1枚つきでLINEに送ります。Secrets を入れるだけで動きます。
-
-### 設定
-
-1. LINE Developers で Messaging API のチャネルを作る
-2. リポジトリの `Settings` → `Secrets and variables` → `Actions` → `New repository secret`
-   - `LINE_TOKEN` … チャネルアクセストークン（長期）
-   - `LINE_USER_ID` … 送信先。自分のユーザーID（`U` で始まる33文字）
-
-   turtle_v2 と同じ名前にしてある。古い名前 `LINE_CHANNEL_TOKEN` / `LINE_TO` も
-   読めるようにしてあるので、どちらでも動く。
-3. そのLINE公式アカウントを、自分のLINEで友だち追加しておく
-   （**友だちでないユーザーには push できません**）
-
-### 仕組み
-
-毎時1回動く `update.yml` に相乗りしています。
-
-| 時刻（日本時間） | やること |
-|---|---|
-| 8:40以降の最初の実行 | 画像を描いて `docs/data/` に置く。その回の配信で公開される |
-| 9:00以降の最初の実行 | 公開されたURLを確かめてから送る |
-
-**画像がPagesに載る前に送っても相手には出ない**ため、この2段構えにしています。
-専用のワークフローを別に立てると「送った」という記録を配信物に残せず、
-翌日以降の重複判定が効きません。
-
-そのため到着は **おおむね9時00分〜9時20分** です。
-GitHubの定期実行は混雑時に遅れるので、9時ちょうどは保証できません。
-
-送るのは吹き出し2つ（Flexの要約＋画像）ですが、
-[公式ドキュメント](https://developers.line.biz/ja/docs/messaging-api/pricing/)によれば
-通数は送信対象の人数で数えるため、**1通**です。無料枠は月200通。
-
-### 途中で何かが失敗しても、朝の便り自体は届くようにしてある
-
-朝の便りが届かない原因はいくつも考えられる。そのどれが起きても
-「今日は何も来なかった」で終わらせないための作りが入っている。
-
-| 起きうること | どうなるか |
-|---|---|
-| 画像がまだ公開されていない | 4回（約1時間）まで待ち、それでも駄目なら**画像を諦めて文字だけ送る** |
-| Flexの作りが悪くて `400` で弾かれる | **文字だけで送り直す** |
-| CDNが昨日の画像を返している | 公開中の画像と手元の画像を**バイト数まで照合**して気づく。URLが200を返すだけでは判定できない |
-| 同じ日に実行が2回走る | 送信済みの日付を記録しているので**二度送らない** |
-| 前日の画像が残っている | 描いた日付を見ているので**使い回さない** |
-| 銘柄の取得に失敗した | 失敗した銘柄名を**本文に明記する**。黙って古い値を新しい顔で出さない |
-
-### 画像について正直に
-
-画像は `chart.py` が zlib とビットマップフォントだけで描いています。
-外部ライブラリを入れていないのは、毎朝の `pip install` が失敗すると
-その日の通知ごと落ちるためです。
-
-**この描画器は日本語を出せません。** 画像の中の文字は英数字と記号だけです。
-日本語の説明はFlexメッセージの本文側に載せています。
-画像にも日本語を入れたい場合は、フォントファイル（Noto Sans JP 等）と
-Pillow が必要になります。
-
-### 手元での確認
-
-```bash
-python scripts/daily.py --test       # いますぐ1通テスト送信（まずこれを通す）
-python scripts/daily.py --mock       # 架空データで画像を作る（/tmp に出る）
-python scripts/build.py --full       # 実データを取る
-python scripts/daily.py --dry-run    # 実データで組み立て、中身を表示（送らない）
-```
-
-Windows のコマンドプロンプトから試すときは、先に環境変数を置く。
-
-```
-set LINE_TOKEN=（チャネルアクセストークン）
-set LINE_USER_ID=U から始まるユーザーID
-python scripts\daily.py --test
-```
-
-GitHub の画面からでも試せる。Actions → サイト更新 → Run workflow →
-**「LINEにテスト送信して設定を確かめる」に印を付けて実行**。
-本処理は動かず、1通だけ送って終わる。
-
-## 定期実行が動いていないときの調べ方
-
-サイト上部に「データが ◯◯ 分前のものです」と黄色い帯が出たら、
-`update.yml` が回っていない。**朝の便りもこの上に乗っているので、
-ここが止まるとLINEも来ない。** 上から順に見る。
-
-1. **Actions タブを開く。** 実行が並んでいるか
-   - 何も無い → 定期実行がまだ一度も起きていない。下の「予約が始まらない」へ
-   - 赤い×が並んでいる → どこで落ちたかログを開く。セルフテストで落ちていれば配信されない
-   - 黄色い●のまま止まっている → 環境の承認待ちか、`concurrency` の順番待ち
-2. **`Settings` → `Environments` → `github-pages`** に承認者や分岐の制限が付いていないか
-3. **`Settings` → `Actions` → `General`** で Actions が有効か
-4. **`Settings` → `Pages`** のソースが `GitHub Actions` になっているか
-
-### 予約が始まらない・間引かれる
-
-GitHubの定期実行には、次の性質がある。**どれも仕様であって不具合ではない。**
-
-- 予約は**既定ブランチにあるワークフローだけ**が対象。別の分岐に置いても動かない
-- **混雑時は遅れる。間引かれて丸ごと飛ぶこともある。** 間隔が短いほど起きやすい
-- **リポジトリが60日間更新されないと、予約は自動で止まる。**
-  止まったときは Actions タブに再開のボタンが出る
-- 作りたてのリポジトリでは、最初の予約が動き出すまで時間がかかることがある
-
-このため `update.yml` には `*/15` に加えて、
-朝の便りに関わる時間帯（08:50 / 08:55 / 09:05 / 09:10 JST）だけ
-独立した予約を置いてある。予約は1本ずつ別に登録されるので、
-どれかが間引かれても他が当たる見込みが上がる。
-
-**それでも駄目なら、手元のPCから動かすほうが確実。**
-turtle_v2 と同じPCで、タスクスケジューラから
-`python scripts/build.py --full` → `python scripts/daily.py --render` →
-画像をリポジトリに置く → `python scripts/daily.py --send --skip-verify`
-の順に叩けば、GitHubの予約に一切依存しなくなる。
-
-## 通知の設定
-
-しきい値に触れたときだけLINEに飛ばせます。設定しなくてもサイトは動きます。
-
-1. LINE Developers でMessaging APIのチャネルを作り、チャネルアクセストークンを取得
-2. リポジトリの `Settings` → `Secrets and variables` → `Actions` → `New repository secret`
-   - `LINE_CHANNEL_TOKEN` … チャネルアクセストークン
-   - `LINE_TO` … 送信先のユーザーIDまたはグループID
-3. 手元で確かめる場合は `python scripts/notify.py --dry-run`
-
-通知条件は `scripts/notify.py` の `RULES` にまとめてあります。
-
-| 項目 | 既定値 | 意味 |
+| 項目 | 初期値 | 意味 |
 |---|---|---|
-| `z_threshold` | 2.5 | 値動きが何σを超えたら知らせるか |
-| `corr_z_threshold` | 2.0 | 相関の異常が何σを超えたら知らせるか |
-| `corr_cross_zero` | true | BTC×S&P500の30日相関が0を跨いだら知らせる |
-| `risk_threshold` | 60 | リスク選好が±これを超えたら知らせる |
-| `stale_alert` | true | 取得に失敗した銘柄が出たら知らせる |
+| `LINE_ENABLED` | `true` | `false`にするとLINE通知を止める |
+| `LINE_DAILY_HOUR` | `9` | 日本時間の開始時刻。0〜23 |
 
-同じ内容を繰り返し送らないよう、前回送った「理由の組み合わせ」を
-`docs/data/notify_state.json` に残し、変化が無ければ黙ります。
-このファイルは朝の便りと共用で、月間の通数も一緒に数えています
-（通知は最大120通まで。残りは朝の便りのぶん）。
+それ以外のしきい値・上限は `market.config.json` の `notifications` で変更します。画面のブラウザ専用価格アラートは、このサーバー側LINE設定とは別です。
 
-**2026-09-03に直した不具合。** 以前は「送るものが無い回」に保存状態を
-書き出していませんでした。このリポジトリは `docs` をまるごと配信し直すため、
-書き出さない回の配信で公開中の `notify_state.json` が消え、
-連投防止も月間上限も実質効いていませんでした。いまはどの枝を通っても必ず
-書き出し、`daily.py --carry` で毎回引き継いでいます。
+## データ品質・計算の修正
 
-**LINE Notify について。** 以前広く使われていた LINE Notify は2025年3月末で
-終了したと認識していますが、この点はご自身で確認してください。本スクリプトは
-後継の Messaging API を使っています。すでに別の通知手段をお持ちなら、
-`notify.py` の `send()` を差し替えるだけでそちらに流せます。
+- 5日・20日変化率を日次変化率の加算から、終点÷起点−1の複利リターンに修正。利回りは従来どおり差分（pt）。
+- 年初来の基準を前年末の最後の観測値へ修正。前年末を含む履歴がなければ欠損を表示。
+- Coinbaseの日足取得に `start` と `end` を両方指定。旧コードの `end` だけの指定では範囲が無視される仕様に対応。最大300本ずつ、約2年分を取得。
+- Krakenへの切替時に終値辞書とOHLC辞書を正しく取り出す。Krakenの未確定の最後の足を除外。
+- Coinbaseの当日進行中の足を除外。Yahooは取引所タイムゾーンと取引終了時刻を使い、進行中の日足を分析から外す。休場・特別セッションなどは取得元のメタ情報に依存します。
+- キャッシュを再利用するときにも、前回の取得失敗を「正常」に書き換えません。
+- 合成系列を取得件数に混ぜません。日足の取得状態と現値の取得状態を区別してJSONに記録。
+- 全取得先が失敗した場合は配信を止め、前の公開サイトを保ちます。
+- Yahooの日足取得を最大4件並列化。レート制限時に無制限な再試行はしません。
+- 疎通確認ワークフローが存在しない `healthcheck.py` を呼んでいた点を、実在する `healthcheck2.py` に修正。
+
+値動きの相関は因果を示しません。類似局面や季節性は予測の保証ではありません。銘柄により観測期間が違い、暗号資産と株式は取引日・日足の区切りも異なります。
+
+## ローカルでの確認
+
+```powershell
+# 既存のPython 3.12.14仮想環境を利用
+.\.venv\Scripts\Activate.ps1
+python -m unittest discover -s tests -v
+python scripts/build.py --selftest
+python scripts/chart.py --selftest
+python scripts/daily.py --selftest
+python scripts/healthcheck2.py --selftest
+# 実データを取得（通知は送らない）
+python scripts/build.py --full --seed-url https://pythonddd.github.io/Market/data/history.json
+# 通知内容だけ確認。ネット接続・状態変更・送信なし
+python scripts/notification.py --dry-run
+# 自分のPCでサイトを開く
+python scripts/preview.py
+```
+
+フロントエンドの計算テスト（Nodeがある場合）:
+
+```text
+node --test tests/core.test.cjs
+node --check docs/app.js
+node --check docs/dashboard.js
+```
+
+実際にテスト送信したい場合は環境変数を設定して `python scripts/notification.py --test`。認証・送信枠だけなら `--check`。トークンを公開ファイルやJavaScriptへ書かないでください。
+
+## ファイル構成
+
+```text
+.github/workflows/update.yml       更新・通知・Pages配信
+.github/workflows/healthcheck.yml  手動の疎通確認
+market.config.json                LINEしきい値・上限
+scripts/notification.py            通知の統合入口
+scripts/line_transport.py          LINE API、診断、再試行
+scripts/state_store.py             永続送信状態・送信待ち本文
+scripts/build.py                  取得・分析の統合
+scripts/sources.py                データソース
+scripts/analytics.py              統計計算
+scripts/daily.py                   市場だより本文と手動チャート描画
+scripts/notify.py                  異常スキャンの通知本文
+scripts/preview.py                 手元での確認用サーバー
+scripts/make_preview.py            保存データを埋め込んだHTMLを生成
+scripts/chart.py                   既存PNGチャートエンジン
+docs/                             GitHub Pages配信物
+  core.js                         検証可能なUI計算・データ操作
+  dashboard.js / dashboard.css     新画面
+  app.js / style.css               既存詳細分析（改修済み）
+tests/                            通知・計算・取得の回帰テスト
+PREVIEW.html                      保存データを埋め込んだ画面見本
+導入手順.md / 検証結果.md          導入・確認できた範囲
+```
+
+旧 `潮目_手引き.pptx` は元の添付をそのまま残しています。旧通知仕様の説明を含むため、今回の導入にはこのREADMEと導入手順を使ってください。
+
+## 公式仕様の参照
+
+- LINE Messaging API: https://developers.line.biz/en/reference/messaging-api/
+- 同一キーによる再試行、受付と配達の違い、24時間の有効期限: https://developers.line.biz/en/docs/messaging-api/retrying-api-request/
+- GitHub Actions のschedule遅延・実行省略: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule
+- GitHubの状態ファイル更新: https://docs.github.com/en/rest/repos/contents#create-or-update-file-contents
+- GitHub Git trees / commits: https://docs.github.com/en/rest/git/trees / https://docs.github.com/en/rest/git/commits
+- Coinbaseの時間範囲と300本上限: https://docs.cdp.coinbase.com/api-reference/exchange-api/rest-api/products/get-product-candles
+- Krakenの未確定足: https://docs.kraken.com/api-reference/market-data/get-ohlc-data
+
+## 2.1 — 読みやすい配色
+
+- 白一色の面をグレージュにし、本文は濃い墨色、アクセントは深い紫・緑へ変更。
+- 補足文字のコントラストは通常の背景に対して4.5:1以上。薄いフォントを避け、説明・数値・ラベルを拡大。
+- SVGの文字、相関表、数式の背景もライト／ダークの両テーマに追従。
+- スマートフォンでは異常スキャンを段組みにし、横長チャートは文字を潰さずスクロール表示。
+- `PREVIEW.html` は生成物のためGitには保存しません。必要なら実データ取得後に `python scripts/make_preview.py` で生成できます。

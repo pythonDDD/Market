@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.state/
+.env
+docs/data/
+!docs/data/.gitkeep
+
+# Generated local snapshot; the live site uses docs/index.html.
+PREVIEW.html
